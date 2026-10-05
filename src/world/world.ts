@@ -250,8 +250,8 @@ export class World {
       v.houses.push({
         id: hash(this.s, c, 42, tries), x, y, size, w, h: size * r.range(0.6, 0.9),
         depth: w * r.range(0.25, 0.45), side: r.chance(0.5) ? 1 : -1,
-        roofH: size * r.range(0.3, 0.55), peak: r.range(-0.2, 0.2), flatRoof: r.chance(0.2),
-        warm: r.chance(0.2), warmRoof: r.chance(0.25), windows: r.int(0, 2), chimney: r.chance(0.3),
+        roofH: size * r.range(0.45, 0.75), peak: r.range(-0.2, 0.2), flatRoof: r.chance(0.08),
+        warm: r.chance(0.2), warmRoof: r.chance(0.35), windows: r.int(0, 2), chimney: r.chance(0.3),
       });
     }
 

@@ -10,8 +10,8 @@ import { inPad, L, type ChunkPlan } from './plan';
 const P = palette({
   wall: ['#6a86a8', '#7f98b0', '#5a7896', '#8ea3a8', '#4f6f8f', '#9fb2b4'],
   wallWarm: ['#b39a6a', '#a48d64', '#c2ab78', '#9c8a62'],
-  roof: ['#2a3f6a', '#34507a', '#22365e', '#3d5a6e', '#1d2f55'],
-  roofWarm: ['#8a5a3a', '#7a4e34', '#9a6a40', '#6e4a36'],
+  roof: ['#3b5a8c', '#4a6a9a', '#2f4a7a', '#5a7aa8', '#40608e'],
+  roofWarm: ['#a0623a', '#8a5434', '#b87a44', '#7e4c34'],
   window: ['#f4d04a', '#f2b53a', '#f7de6a', '#f0c040'],
   tree: ['#1d3a3a', '#2a4a3a', '#355a45', '#1a2c40', '#24423f', '#3f6250'],
   outline: ['#101c3a', '#0c1630', '#14203f'],
@@ -53,7 +53,7 @@ function randIn(poly: Poly, rng: Rng, m = 0.1): Pt {
 function paintFace(ctx: Ctx, rng: Rng, poly: Poly, pal: RGB[], ang: number, sw: number, shade = 0) {
   const tone = (c: RGB) => (shade ? darken(c, shade) : c);
   fillPoly(ctx, poly.map(([x, y]) => [x + rng.range(-0.6, 0.6), y + rng.range(-0.6, 0.6)] as Pt), tone(pal[0]));
-  const n = Math.max(3, Math.round((area(poly) / (sw * sw)) * 1.3));
+  const n = Math.max(3, Math.round((area(poly) / (sw * sw)) * 1.6));
   for (let i = 0; i < n; i++) {
     const [x, y] = randIn(poly, rng, 0.08);
     const a = ang + rng.range(-0.25, 0.25), len = sw * rng.range(1.2, 2.4);
@@ -67,11 +67,11 @@ function paintFace(ctx: Ctx, rng: Rng, poly: Poly, pal: RGB[], ang: number, sw: 
 function contour(ctx: Ctx, rng: Rng, poly: Poly, w: number, closed = true) {
   const edges = closed ? poly.length : poly.length - 1;
   for (let i = 0; i < edges; i++) {
-    if (rng.chance(0.1)) continue;
+    if (rng.chance(0.12)) continue;
     const a = poly[i], b = poly[(i + 1) % poly.length];
-    const o = rng.range(0, 0.12);
+    const o = rng.range(-0.08, 0.05), o2 = rng.range(-0.08, 0.05);
     const p0: Pt = [lerp(a[0], b[0], -o), lerp(a[1], b[1], -o)];
-    const p1: Pt = [lerp(a[0], b[0], 1 + rng.range(0, 0.12)), lerp(a[1], b[1], 1 + rng.range(0, 0.12))];
+    const p1: Pt = [lerp(a[0], b[0], 1 + o2), lerp(a[1], b[1], 1 + o2)];
     const mid: Pt = [lerp(p0[0], p1[0], 0.5) + rng.range(-0.8, 0.8), lerp(p0[1], p1[1], 0.5) + rng.range(-0.8, 0.8)];
     stroke(ctx, rng, [p0, mid, p1], w * rng.range(0.8, 1.2), jitter(rng.pick(P.outline), rng, 10));
   }
@@ -96,7 +96,7 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
   const l = h.x - h.w / 2, r = h.x + h.w / 2, top = h.y - h.h, bot = h.y;
   const d = h.depth, rise = d * 0.35, oh = h.w * 0.07;
   const px = h.x + h.peak * h.w, ridge = top - h.roofH;
-  const sw = Math.max(2.2, h.size * 0.15);
+  const sw = Math.max(2.6, h.size * 0.2);
 
   const wallPal = h.warm ? P.wallWarm : P.wall, roofPal = h.warmRoof ? P.roofWarm : P.roof;
   const front = M([[l, top], [r, top], [r, bot], [l, bot]]);
@@ -119,9 +119,11 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
   }
   paintFace(ctx, rng, roofFront, roofPal, 0, sw * 0.95);
 
-  if (h.chimney) {
-    const cx = mx(lerp(l, r, 0.7)), cw = h.size * 0.12;
-    const ch: Poly = [[cx - cw, ridge + h.roofH * 0.35], [cx + cw, ridge + h.roofH * 0.35], [cx + cw, ridge + h.roofH * 0.8], [cx - cw, ridge + h.roofH * 0.8]];
+  if (h.chimney && !h.flatRoof) {
+    // Stand it on the roof slope between the ridge and the eave, poking above the roofline.
+    const t = 0.55, x = lerp(px, r, t), slopeY = lerp(ridge, top, t);
+    const cx = mx(x), cw = h.size * 0.1, ch0 = slopeY - h.roofH * 0.45;
+    const ch: Poly = [[cx - cw, ch0], [cx + cw, ch0], [cx + cw, slopeY + 2], [cx - cw, slopeY + 2]];
     paintFace(ctx, rng, ch, roofPal, Math.PI / 2, sw * 0.8, 0.2);
     contour(ctx, rng, ch, sw * 0.4);
   }
@@ -132,11 +134,22 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
     windowDab(ctx, rng, wx, wy, ww, wh);
   }
 
-  const ow = Math.max(1.6, h.size * 0.07);
-  contour(ctx, rng, front, ow);
-  contour(ctx, rng, side, ow);
-  contour(ctx, rng, roofFront, ow);
-  if (roofSide.length) contour(ctx, rng, roofSide, ow);
+  // Outline the silhouette and the main folds once each; interior seams stay soft.
+  const ow = Math.max(2, h.size * 0.09);
+  const e = (pts: Pt[]) => M(pts);
+  const edges: Pt[][] = [
+    e([[l, top], [l, bot]]), e([[l, bot], [r, bot]]), e([[r, top], [r, bot]]),
+    e([[r, bot], [r + d, bot - rise]]), e([[r + d, bot - rise], [r + d, top - rise]]),
+  ];
+  if (h.flatRoof) {
+    edges.push(e([[l - oh, top], [r + oh, top]]), e([[r + oh, top], [r + d + oh, top - rise]]));
+  } else {
+    edges.push(
+      e([[l - oh, top + 1], [px, ridge]]), e([[px, ridge], [r + oh, top + 1]]), e([[l - oh, top + 1], [r + oh, top + 1]]),
+      e([[px, ridge], [px + d, ridge - rise]]), e([[px + d, ridge - rise], [r + d + oh, top - rise + 1]]),
+    );
+  }
+  for (const edge of edges) contour(ctx, rng, edge, ow, false);
 }
 
 function drawChurch(ctx: Ctx, rng: Rng, c: Church) {
@@ -181,7 +194,7 @@ function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
   ctx.beginPath();
   ctx.ellipse(t.x, cy, rx, ry, 0, 0, TAU);
   ctx.fill();
-  const n = Math.round((rx * ry) / 30);
+  const n = Math.round((rx * ry) / 11);
   for (let i = 0; i < n; i++) {
     const a = rng.range(0, TAU), rr = Math.sqrt(rng.random()) * 0.95;
     const x = t.x + Math.cos(a) * rr * rx, y = cy + Math.sin(a) * rr * ry;
