@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gogh With The Flow</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Gogh With The Flow</h1>
+    <div class="controls">
+      <label>seed <input id="seed" type="text" spellcheck="false"></label>
+      <button id="repaint" title="Paint this seed again">Paint</button>
+      <button id="new" title="New random painting">New</button>
+      <button id="save" title="Download PNG">Save</button>
+      <label class="check"><input id="animate" type="checkbox" checked> animate</label>
+    </div>
+  </header>
+  <main>
+    <div class="frame">
+      <canvas id="canvas"></canvas>
+      <div id="progress"></div>
+    </div>
+  </main>
+
+  <script src="js/util.js"></script>
+  <script src="js/brush.js"></script>
+  <script src="js/sky.js"></script>
+  <script src="js/land.js"></script>
+  <script src="js/village.js"></script>
+  <script src="js/cypress.js"></script>
+  <script src="js/painting.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
