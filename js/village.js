@@ -33,10 +33,11 @@
     })();
 
     s.houses = [];
-    var n = r.int(28, 42);
+    var n = r.int(40, 60);
     for (var i = 0, tries = 0; i < n && tries < 600; tries++) {
-      var x = W * r.range(0.02, 0.98), t = Math.pow(r.random(), 0.8);
-      var y = depthY(x, M.lerp(0.12, 0.85, t)), size = H * M.lerp(0.018, 0.042, t);
+      var x = s.church.x + W * 0.3 * (r.random() + r.random() + r.random() - 1.5), t = Math.pow(r.random(), 0.8);
+      if (x < -10 || x > W + 10 || s.cypress.covers(x, H * 0.95, 0)) continue;
+      var y = depthY(x, M.lerp(0.12, 0.85, t)), size = H * M.lerp(0.016, 0.036, t);
       if (Math.abs(x - s.church.x) < s.church.bodyW && Math.abs(y - s.church.base) < size * 1.5) continue;
       var clash = s.houses.some(function (h) { return Math.abs(h.x - x) < (h.size + size) * 0.75 && Math.abs(h.y - y) < (h.size + size) * 0.35; });
       if (clash) continue;

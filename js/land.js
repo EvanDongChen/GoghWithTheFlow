@@ -15,15 +15,15 @@
 
   Land.setup = function (s) {
     var r = s.rng, W = s.W, H = s.H, N = s.noise;
-    var tilt = r.range(0.02, 0.06);
+    var tilt = r.range(0.04, 0.09);
     var o1 = r.range(0, 100), o2 = r.range(0, 100), o3 = r.range(0, 100);
-    var gap1 = H * r.range(0.035, 0.05), gap2 = H * r.range(0.04, 0.055);
+    var gap1 = H * r.range(0.05, 0.075), gap2 = H * r.range(0.04, 0.06);
 
     s.ridgeBack = function (x) {
-      return s.horizon - H * tilt * (x / W - 0.5) + H * 0.035 * N.fbm(x * 0.0022 + o1, o1, 3);
+      return s.horizon - H * tilt * (x / W - 0.5) + H * 0.065 * N.fbm(x * 0.0018 + o1, o1, 3);
     };
     s.ridgeFront = function (x) {
-      return s.ridgeBack(x) + gap1 + H * 0.02 * N.fbm(x * 0.003 + o2, o2, 2);
+      return s.ridgeBack(x) + gap1 + H * 0.03 * N.fbm(x * 0.0025 + o2, o2, 2);
     };
     s.villageTop = function (x) {
       return s.ridgeFront(x) + gap2 + H * 0.012 * N.noise2(x * 0.004 + o3, o3);
