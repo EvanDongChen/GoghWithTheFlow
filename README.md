@@ -9,9 +9,11 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
 
 ## Two ways to look at it
 
-- **Gallery**: the classic composition, hung in a gilded frame on a museum wall, with a placard
-  that names its seed and counts its brushstrokes. The cypress is on the left, the great swirl in
-  the middle, the moon top right, and a church spire rises over the hills.
+- **Gallery**: a close reinterpretation of the 1889 painting, hung in a gilded frame on a museum
+  wall, with a placard that names its seed and counts its brushstrokes. It has the flame-shaped
+  cypress cluster, the rolling great swirl, eleven haloed stars, a crescent moon, mountains that
+  climb to a dark peak on the right, olive groves, and a white church spire. Each seed varies the
+  details slightly.
 - **Wander**: walk sideways through an infinite night. New swirls, moons, cypresses, villages,
   poplars and fields keep coming, and each stretch is painted just ahead of you as you travel.
   It starts on the gallery painting itself.
@@ -60,7 +62,7 @@ it being painted.
 | Path | Role |
 | --- | --- |
 | `src/core/` | Seeded RNG and hashing, Perlin noise, colour helpers, the impasto brush |
-| `src/world/world.ts` | Chunked feature generation: moons, swirls, stars, cypresses, towns, trees, terrain |
+| `src/world/world.ts` | The classic 1889 layout, plus chunked procedural generation of moons, swirls, stars, cypresses, towns, olive trees and peaked terrain |
 | `src/paint/sky.ts` | Flow field from base wave + milky-way ribbon + vortices + star halos; concentric glow rings |
 | `src/paint/land.ts` | Hills that follow ridgelines, valley floor, field patches |
 | `src/paint/village.ts` | Blocky 3/4-view houses built from paint dabs, glowing windows, churches, trees |
