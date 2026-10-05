@@ -1,4 +1,3 @@
-import './styles.css';
 import { clamp } from './core/math';
 import { ChunkPainter } from './paint/chunks';
 import { CW, H, World } from './world/world';
