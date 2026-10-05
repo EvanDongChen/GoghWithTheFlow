@@ -7,21 +7,23 @@ import { H, World, type Glow } from '../world/world';
 import { cellRange, inPad, L, strokeItem, type ChunkPlan } from './plan';
 
 const P = palette({
-  deep: ['#152a63', '#1b3577', '#22408a', '#1a2f6e'],
-  mid: ['#2f58a0', '#3a66ad', '#4673b8', '#3560a6'],
-  light: ['#6e98cc', '#86abd6', '#9fbedd', '#7aa3c9'],
-  pale: ['#c4d8e0', '#dce6dc', '#b2cbd9', '#e8edd2'],
-  teal: ['#5f95a6', '#7aaaa8', '#4e86a0'],
-  dark: ['#101f4a', '#14275a', '#0e1c44'],
+  deep: ['#1a3585', '#1f3d91', '#24449c', '#173078'],
+  mid: ['#2f5fb0', '#3a6cbc', '#4a79c4', '#3464b4'],
+  light: ['#7aa5dc', '#8fb5e2', '#a6c4e4', '#6d98d2'],
+  pale: ['#d4e2ea', '#e6ecdc', '#c2d6e6', '#f0f0d8'],
+  teal: ['#6a9cc0', '#7fb0c8', '#5f92bc'],
+  dark: ['#132a6e', '#16307a', '#102563'],
   yellow: ['#f4d24a', '#f6df6e', '#eec23a'],
   cream: ['#fbf1b8', '#fff8d8', '#f6eaa0'],
   leaf: ['#cbd88a', '#b9cf8c', '#dfe39a'],
-  orange: ['#e99a2c', '#f0ae3c', '#dd8a25'],
+  orange: ['#f2a93b', '#f7c04a', '#eb9a2e'],
 });
 type Key = keyof typeof P;
 
-const STAR_RINGS: Key[] = ['cream', 'yellow', 'cream', 'leaf', 'yellow', 'pale', 'light', 'leaf', 'light', 'pale', 'light'];
-const MOON_RINGS: Key[] = ['yellow', 'orange', 'yellow', 'cream', 'orange', 'yellow', 'leaf', 'cream', 'light', 'pale', 'light', 'light'];
+// The original stars have small yellow cores in pale, whitish halos; the moon sits in a broad
+// yellow-green glow.
+const STAR_RINGS: Key[] = ['cream', 'yellow', 'cream', 'pale', 'leaf', 'pale', 'cream', 'light', 'pale', 'light', 'light'];
+const MOON_RINGS: Key[] = ['leaf', 'cream', 'leaf', 'leaf', 'cream', 'leaf', 'pale', 'leaf', 'pale', 'light'];
 
 const SP = 8.5;
 const LAYER_SKY = 1;
@@ -67,7 +69,7 @@ function colorKey(w: World, x: number, y: number, rng: Rng): Key {
     const r = dist(x, y, g.x, g.y);
     if (r > g.halo * 1.1) continue;
     if (r < g.core) {
-      if (g.kind === 'moon') return inCrescent(g, x, y) ? 'yellow' : 'orange';
+      if (g.kind === 'moon') return inCrescent(g, x, y) ? (rng.chance(0.75) ? 'orange' : 'yellow') : rng.chance(0.5) ? 'leaf' : 'pale';
       return rng.chance(0.6) ? 'cream' : 'yellow';
     }
     const rings = g.kind === 'moon' ? MOON_RINGS : STAR_RINGS;
@@ -82,18 +84,18 @@ function colorKey(w: World, x: number, y: number, rng: Rng): Key {
     const ang = Math.atan2(y - o.y, x - o.x);
     const phase = r / (o.R * 0.2) + (o.dir * ang) / TAU * 2;
     const f = phase - Math.floor(phase);
-    return f < 0.25 ? 'pale' : f < 0.5 ? 'light' : f < 0.75 ? 'mid' : f < 0.88 ? 'teal' : 'dark';
+    return f < 0.28 ? 'pale' : f < 0.55 ? 'light' : f < 0.8 ? 'mid' : f < 0.9 ? 'teal' : 'deep';
   }
 
   const bd = Math.abs(y - w.bandY(x)) / w.bandWidth;
-  if (bd < 1 && rng.random() < (1 - bd) * 0.9) {
-    const bn = w.noise.noise2(x * 0.01 + 7, y * 0.01);
-    return bn > 0.15 ? 'pale' : bn > -0.2 ? 'light' : 'teal';
+  if (bd < 1 && rng.random() < (1 - bd * bd) * 0.95) {
+    const bn = w.noise.noise2(x * 0.01 + 7, y * 0.01) + (1 - bd) * 0.3;
+    return bn > 0.1 ? 'pale' : bn > -0.25 ? 'light' : 'teal';
   }
 
   const t = clamp(y / w.horizon, 0, 1) + 0.25 * w.noise.noise2(x * 0.004 + 50, y * 0.004);
   const u = rng.random();
-  if (u < 0.05) return 'dark';
+  if (u < 0.025) return 'dark';
   if (t < 0.3) return u < 0.7 ? 'deep' : 'mid';
   if (t < 0.65) return u < 0.25 ? 'deep' : u < 0.8 ? 'mid' : 'light';
   return u < 0.15 ? 'mid' : u < 0.6 ? 'light' : u < 0.8 ? 'pale' : 'teal';

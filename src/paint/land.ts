@@ -9,10 +9,11 @@ import { cellRange, inPad, L, strokeItem, type ChunkPlan } from './plan';
 const P = palette({
   back: ['#23447f', '#2d5492', '#3a64a2', '#5079b3', '#1c3a72'],
   backHi: ['#6f97c6', '#8aaed3'],
-  front: ['#2a4f6e', '#335d7c', '#3f6c86', '#4b7a86', '#2d5468', '#557e7a'],
-  frontHi: ['#79a0a6', '#6d96b0'],
-  outline: ['#11234a', '#0f1f40'],
-  ground: ['#1b2f4a', '#223a58', '#2b4a5c', '#2f4f4a', '#1e3540', '#3a5c56', '#28445e'],
+  front: ['#34548c', '#3a5c9a', '#4a6ea8', '#5a7db4', '#2c4a7c', '#4a6e96'],
+  frontHi: ['#7c9fcc', '#8eb0d4', '#6f96b8'],
+  peak: ['#13235a', '#1a2d6a', '#22377a', '#2c4486', '#3a5596'],
+  outline: ['#11234a', '#0f1f40', '#16295a'],
+  ground: ['#1b2f4f', '#223a5e', '#2b4a66', '#2a4650', '#1e3548', '#365670', '#28445e'],
   field: ['#4a5a3a', '#5a6440', '#3e5240', '#6a6a44'],
 });
 
@@ -55,7 +56,9 @@ export function planLand(p: ChunkPlan) {
       const px = (i + r.range(-0.5, 0.5)) * sp, py = (j + r.range(-0.5, 0.5)) * sp;
       if (!inPad(p, px) || py < w.ridgeBack(px) + 2 || py > w.villageTop(px) + 4) continue;
       const isBack = py < w.ridgeFront(px);
-      const pal = isBack ? (r.chance(0.12) ? P.backHi : P.back) : r.chance(0.1) ? P.frontHi : P.front;
+      // High peaks are painted in deep navy, like the dark mountain at the right of the original.
+      const peak = isBack && r.random() < w.peakness(px) * 0.85;
+      const pal = peak ? P.peak : isBack ? (r.chance(0.14) ? P.backHi : P.back) : r.chance(0.1) ? P.frontHi : P.front;
       const pts = trace(field, px, py, r.range(26, 44), 5);
       p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), jitter(r.pick(pal), r, 18)));
     }
@@ -66,13 +69,14 @@ export function planLand(p: ChunkPlan) {
     const step = 70;
     for (let i = Math.floor((p.x0 - p.pad - 120) / step); i * step < p.x1 + p.pad; i++) {
       const seed = hash(w.s, 6, which, i), r = new Rng(seed);
-      const xs = i * step + r.range(-15, 15), len = r.range(60, 110);
+      if (r.chance(0.25)) continue;
+      const xs = i * step + r.range(-15, 15), len = r.range(50, 100);
       const seg: Pt[] = [];
       for (let t = 0; t <= 6; t++) {
         const xx = xs + (len * t) / 6;
         seg.push([xx, f(xx) + r.range(-1, 1)]);
       }
-      p.items.push(strokeItem(L.RIDGE, r.random(), seed, seg, r.range(2.5, 3.8), r.pick(P.outline)));
+      p.items.push(strokeItem(L.RIDGE, r.random(), seed, seg, r.range(3, 4.5), jitter(r.pick(P.outline), r, 14)));
     }
   });
 
