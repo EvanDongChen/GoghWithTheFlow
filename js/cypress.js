@@ -5,9 +5,9 @@
 
   var P = C.palette({
     dark: ['#14231b', '#1a2c20', '#0f1a15', '#172619'],
-    mid: ['#24402b', '#2c4a2e', '#344f2a', '#2a3f2c'],
+    mid: ['#203626', '#263f28', '#2e4526', '#233629'],
     brown: ['#3e3220', '#4b3b22', '#5a4428'],
-    hi: ['#5b6e3a', '#6e7a45', '#4f6a3e', '#7a7f4a'],
+    hi: ['#4f6233', '#5f6b3c', '#455e37', '#6b7042', '#3d5a6a'],
     outline: ['#0a120e', '#0d1712']
   });
 
@@ -23,9 +23,10 @@
     c.t = function (y) { return (c.base - y) / (c.base - c.top); };
     c.center = function (t) { return c.x + c.w * (0.12 * Math.sin(t * 4 + c.ph) + c.lean * 0.3 * t); };
     function prof(t) { return Math.pow(Math.max(0, 1 - t), 0.75) * (0.8 + 0.2 * Math.min(1, t * 5)); }
-    // Left and right edges wobble independently so the outline reads as flickering flame tongues.
-    c.halfL = function (t) { return c.w * 0.5 * prof(t) * (1 + 0.2 * Math.sin(t * c.lobes + c.ph) + 0.18 * N.noise2(t * 6, c.o)); };
-    c.halfR = function (t) { return c.w * 0.5 * prof(t) * (1 + 0.2 * Math.sin(t * c.lobes * 0.9 + c.ph + 2) + 0.18 * N.noise2(t * 6, c.o + 9)); };
+    // Skewed-sine lobes: each edge swells slowly then pulls in quickly, giving upward-leaning flame tongues.
+    function tongue(t, freq, ph) { var a = 6.2832 * (t * freq + ph); return 0.5 + 0.5 * Math.sin(a + 0.8 * Math.sin(a)); }
+    c.halfL = function (t) { return c.w * 0.5 * prof(t) * (0.72 + 0.5 * tongue(t, c.lobes / 6.28, c.ph) + 0.2 * N.noise2(t * 7, c.o)); };
+    c.halfR = function (t) { return c.w * 0.5 * prof(t) * (0.72 + 0.5 * tongue(t, c.lobes * 0.85 / 6.28, c.ph + 0.4) + 0.2 * N.noise2(t * 7, c.o + 9)); };
     c.inside = function (x, y) {
       var t = c.t(y);
       if (t < 0 || t > 1) return false;
@@ -66,7 +67,7 @@
       for (var x = c.x - c.w; x < c.x + c.w; x += sp) {
         var px = x + rng.range(-0.5, 0.5) * sp, py = y + rng.range(-0.5, 0.5) * sp;
         if (!c.inside(px, py)) continue;
-        var u = rng.random(), pal = u < 0.35 ? P.dark : u < 0.7 ? P.mid : u < 0.85 ? P.brown : P.hi;
+        var u = rng.random(), pal = u < 0.45 ? P.dark : u < 0.77 ? P.mid : u < 0.9 ? P.brown : P.hi;
         var pts = G.trace(field, px, py, rng.range(26, 46) * k, 6);
         list.push(strokeOp(pts, rng.range(5, 8.5) * k, C.jitter(rng.pick(pal), rng, 14)));
       }
