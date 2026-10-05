@@ -122,10 +122,7 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
     paintFace(ctx, rng, [[cx - cw, slopeY - h.roofH * 0.45], [cx + cw, slopeY - h.roofH * 0.45], [cx + cw, slopeY + 2], [cx - cw, slopeY + 2]], P.wallShade, Math.PI / 2, sw * 0.7);
   }
 
-  for (let i = 0; i < h.windows; i++) {
-    const ww = Math.max(2.5, h.w * 0.13), wh = h.h * 0.36;
-    windowDab(ctx, rng, mx(lerp(l, r, h.windows === 1 ? 0.5 : 0.28 + i * 0.44)), top + h.h * 0.5, ww, wh);
-  }
+  for (const win of houseWindows(h)) windowDab(ctx, rng, win.x, win.y, win.w, win.h);
 
   // A few seams of shadow: under the eave and down the corner between front and side.
   const sw2 = Math.max(1.6, h.size * 0.07);
@@ -135,6 +132,17 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
     const [c0, c1] = M([[r, top + sw2], [r, bot]]);
     seam(ctx, rng, c0, c1, sw2 * 0.8);
   }
+}
+
+/** Where a house's lit windows are, shared with the animation layer so they can flicker. */
+export function houseWindows(h: House): { x: number; y: number; w: number; h: number }[] {
+  const l = h.x - h.w / 2, r = h.x + h.w / 2, top = h.y - h.h;
+  const out = [];
+  for (let i = 0; i < h.windows; i++) {
+    const x = lerp(l, r, h.windows === 1 ? 0.5 : 0.28 + i * 0.44);
+    out.push({ x: h.x + h.side * (x - h.x), y: top + h.h * 0.5, w: Math.max(2.5, h.w * 0.13), h: h.h * 0.36 });
+  }
+  return out;
 }
 
 function drawChurch(ctx: Ctx, rng: Rng, c: Church) {

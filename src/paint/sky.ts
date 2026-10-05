@@ -67,6 +67,11 @@ function inCrescent(m: Glow, x: number, y: number) {
 }
 
 /** Which palette a sky stroke at (x, y) draws from. */
+/** A sky paint colour at (x, y), as the painting would choose it. Used by the animation layer. */
+export function skyColor(w: World, x: number, y: number, rng: Rng) {
+  return jitter(rng.pick(P[colorKey(w, x, y, rng)]), rng, 22);
+}
+
 function colorKey(w: World, x: number, y: number, rng: Rng): Key {
   const near = w.near(World.chunkOf(x));
   for (const g of near.glows) {

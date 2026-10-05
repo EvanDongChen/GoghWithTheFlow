@@ -1,4 +1,4 @@
-// Plans and progressively paints world chunks into their own offscreen canvases.
+// Plans a world chunk as an ordered list of draw operations. Runs in a worker or on the page.
 import { Rng } from '../core/rng';
 import { CW, H, World } from '../world/world';
 import { planCypresses } from './cypress';
@@ -8,6 +8,26 @@ import { planSky } from './sky';
 import { planVillage } from './village';
 
 const PAD = 48;
+
+type AnyCanvas = OffscreenCanvas | HTMLCanvasElement;
+
+/** A 2D canvas that works both in a worker and on the page. */
+export function makeCanvas(w: number, h: number): AnyCanvas {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
+/**
+ * Brush code is written against the page's context type; an offscreen one has the same drawing API.
+ * Chunk canvases are rasterised on the CPU (willReadFrequently): tens of thousands of strokes sent to
+ * the GPU would queue up in front of the page's own frames and make scrolling stutter.
+ */
+export function context2d(c: AnyCanvas): CanvasRenderingContext2D {
+  return c.getContext('2d', { willReadFrequently: true }) as unknown as CanvasRenderingContext2D;
+}
 
 export function planChunk(world: World, c: number): Op[] {
   const p: ChunkPlan = { world, c, x0: c * CW, x1: (c + 1) * CW, pad: PAD, near: world.near(c), items: [] };
@@ -21,15 +41,14 @@ export function planChunk(world: World, c: number): Op[] {
   return ops;
 }
 
-let weaveTile: HTMLCanvasElement | null = null;
+let weaveTile: AnyCanvas | null = null;
 
 /** Canvas-weave texture. The pattern is anchored to world coordinates, so it tiles across chunks. */
 function weave(ctx: CanvasRenderingContext2D, x0: number, x1: number) {
   if (!weaveTile) {
     const rng = new Rng(12345);
-    weaveTile = document.createElement('canvas');
-    weaveTile.width = weaveTile.height = 64;
-    const tc = weaveTile.getContext('2d')!, img = tc.createImageData(64, 64);
+    weaveTile = makeCanvas(64, 64);
+    const tc = context2d(weaveTile), img = tc.createImageData(64, 64);
     for (let y = 0; y < 64; y++) {
       for (let x = 0; x < 64; x++) {
         const v = 128 + (((x >> 1) + (y >> 1)) & 1 ? 6 : -6) + (rng.random() - 0.5) * 36;
@@ -43,88 +62,41 @@ function weave(ctx: CanvasRenderingContext2D, x0: number, x1: number) {
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
   ctx.globalAlpha = 0.22;
-  ctx.fillStyle = ctx.createPattern(weaveTile, 'repeat')!;
+  ctx.fillStyle = ctx.createPattern(weaveTile as CanvasImageSource, 'repeat')!;
   ctx.fillRect(x0, 0, x1 - x0, H);
   ctx.restore();
 }
 
-export class Chunk {
-  readonly canvas = document.createElement('canvas');
-  readonly ctx: CanvasRenderingContext2D;
-  ops: Op[] | null = null;
-  i = 0;
-  lastUsed = 0;
-
-  constructor(readonly c: number, readonly px: number, readonly scale: number) {
-    this.canvas.width = px;
-    this.canvas.height = Math.round(H * scale);
-    this.ctx = this.canvas.getContext('2d')!;
-  }
-
-  get done() { return !!this.ops && this.i >= this.ops.length; }
-  get progress() { return this.ops ? this.i / this.ops.length : 0; }
-  get started() { return this.i > 0; }
+/** Pixel size of a chunk canvas at a render scale; the scale is snapped so the width is whole. */
+export function chunkPixels(scale: number) {
+  const w = Math.round(CW * scale), s = w / CW;
+  return { w, h: Math.round(H * s), scale: s };
 }
 
-export class ChunkPainter {
-  readonly scale: number;
-  /** Pixel width of one chunk canvas; scale is snapped so this is a whole number. */
-  readonly chunkPx: number;
-  private chunks = new Map<number, Chunk>();
-  private clock = 0;
-
-  constructor(readonly world: World, scale: number) {
-    this.chunkPx = Math.round(CW * scale);
-    this.scale = this.chunkPx / CW;
-  }
-
-  get(c: number): Chunk {
-    let ch = this.chunks.get(c);
-    if (!ch) {
-      ch = new Chunk(c, this.chunkPx, this.scale);
-      this.chunks.set(c, ch);
-    }
-    ch.lastUsed = ++this.clock;
-    return ch;
-  }
-
-  peek(c: number): Chunk | undefined {
-    return this.chunks.get(c);
-  }
-
-  /** Paint wanted chunks in priority order for up to budgetMs. Returns true if anything changed. */
-  work(wanted: number[], budgetMs: number): boolean {
+/**
+ * Paints one chunk in time slices, yielding between them. Reports partial images so the
+ * painting can be watched as it forms. Shared by the worker and the main-thread fallback.
+ */
+export async function paintChunk(
+  world: World, c: number, scale: number,
+  report: (canvas: AnyCanvas, progress: number, strokes: number, done: boolean) => Promise<void> | void,
+  sliceMs = 14, reportEveryMs = 160, restMs = 3,
+) {
+  const { w, h, scale: s } = chunkPixels(scale);
+  const canvas = makeCanvas(w, h), ctx = context2d(canvas);
+  ctx.setTransform(s, 0, 0, s, -c * CW * s, 0);
+  const ops = planChunk(world, c);
+  let i = 0, last = performance.now();
+  await report(canvas, 0, ops.length, false);
+  while (i < ops.length) {
     const t0 = performance.now();
-    let changed = false;
-    for (const c of wanted) {
-      const ch = this.get(c);
-      if (ch.done) continue;
-      if (!ch.ops) {
-        ch.ops = planChunk(this.world, c);
-        ch.ctx.setTransform(this.scale, 0, 0, this.scale, -c * CW * this.scale, 0);
-      }
-      while (ch.i < ch.ops.length) {
-        ch.ops[ch.i++](ch.ctx);
-        changed = true;
-        if ((ch.i & 7) === 0 && performance.now() - t0 > budgetMs) return true;
-      }
-      if (performance.now() - t0 > budgetMs) return changed;
+    while (i < ops.length && performance.now() - t0 < sliceMs) ops[i++](ctx);
+    if (i < ops.length && performance.now() - last > reportEveryMs) {
+      last = performance.now();
+      await report(canvas, i / ops.length, ops.length, false);
     }
-    return changed;
+    // A short rest between slices leaves CPU time for the page to keep animating smoothly.
+    await new Promise((r) => setTimeout(r, restMs));
   }
-
-  /** Keep at most `max` chunks, dropping the least recently wanted ones. */
-  evict(max = 14) {
-    if (this.chunks.size <= max) return;
-    const sorted = [...this.chunks.values()].sort((a, b) => a.lastUsed - b.lastUsed);
-    for (const ch of sorted.slice(0, this.chunks.size - max)) {
-      ch.canvas.width = ch.canvas.height = 0;
-      this.chunks.delete(ch.c);
-    }
-  }
-
-  dispose() {
-    for (const ch of this.chunks.values()) ch.canvas.width = ch.canvas.height = 0;
-    this.chunks.clear();
-  }
+  await report(canvas, 1, ops.length, true);
 }
