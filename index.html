@@ -1,36 +1,114 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gogh With The Flow</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gogh with the Flow</title>
+  <meta name="description" content="An endless Starry Night, procedurally painted stroke by stroke." />
+  <meta name="theme-color" content="#0a0e1c" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316296a'/%3E%3Cpath d='M16 7a9 9 0 1 0 9 9 6 6 0 1 1-6-6 3 3 0 1 0 3 3' fill='none' stroke='%23f2c94c' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <header>
-    <h1>Gogh With The Flow</h1>
-    <div class="controls">
-      <label>seed <input id="seed" type="text" spellcheck="false"></label>
-      <button id="repaint" title="Paint this seed again">Paint</button>
-      <button id="new" title="New random painting">New</button>
-      <button id="save" title="Download PNG">Save</button>
-      <label class="check"><input id="animate" type="checkbox" checked> animate</label>
-    </div>
-  </header>
-  <main>
-    <div class="frame">
-      <canvas id="canvas"></canvas>
-      <div id="progress"></div>
-    </div>
-  </main>
+  <div id="app" data-mode="gallery">
+    <canvas id="wander-canvas" class="wander-canvas" aria-label="An endless painted landscape"></canvas>
+    <div class="wander-vignette" aria-hidden="true"></div>
 
-  <script src="js/util.js"></script>
-  <script src="js/brush.js"></script>
-  <script src="js/sky.js"></script>
-  <script src="js/land.js"></script>
-  <script src="js/village.js"></script>
-  <script src="js/cypress.js"></script>
-  <script src="js/painting.js"></script>
-  <script src="js/main.js"></script>
+    <section class="gallery" aria-label="Gallery">
+      <div class="wall-light" aria-hidden="true"></div>
+      <figure class="frame">
+        <div class="frame-moulding">
+          <div class="frame-liner">
+            <canvas id="gallery-canvas" aria-label="The generated painting"></canvas>
+          </div>
+        </div>
+      </figure>
+      <figcaption class="placard">
+        <p class="placard-artist">After Vincent van Gogh <span>1853–1890</span></p>
+        <h2 class="placard-title">The Starry Night</h2>
+        <p class="placard-no">No. <span id="placard-no"></span></p>
+        <p class="placard-meta">Procedural oil on canvas, 2026<br /><span id="stroke-count">Preparing the palette…</span></p>
+        <div class="placard-progress" aria-hidden="true"><span id="gallery-progress"></span></div>
+      </figcaption>
+    </section>
+
+    <header class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 6.5a9.5 9.5 0 1 0 9.5 9.5 6.2 6.2 0 1 1-6.2-6.2 3.1 3.1 0 1 0 3.1 3.1" />
+      </svg>
+      <div>
+        <h1>Gogh <em>with the</em> Flow</h1>
+        <p>an endless starry night, painted stroke by stroke</p>
+      </div>
+    </header>
+
+    <div class="hud glass" aria-live="polite">
+      <span class="hud-label">Night</span>
+      <span id="hud-seed" class="hud-value"></span>
+      <span class="hud-sep" aria-hidden="true"></span>
+      <span id="hud-distance" class="hud-value">0.00</span>
+      <span class="hud-label">km wandered</span>
+      <span id="hud-painting" class="hud-painting"><i></i>painting ahead</span>
+    </div>
+
+    <nav class="dock glass" aria-label="Controls">
+      <div class="segmented" role="tablist" aria-label="View">
+        <span class="segmented-thumb" aria-hidden="true"></span>
+        <button role="tab" data-mode="gallery" aria-selected="true">Gallery</button>
+        <button role="tab" data-mode="wander" aria-selected="false">Wander</button>
+      </div>
+      <span class="dock-sep" aria-hidden="true"></span>
+      <label class="seed-field">
+        <span>No.</span>
+        <input id="seed-input" spellcheck="false" autocomplete="off" maxlength="32" aria-label="Seed" />
+      </label>
+      <button class="icon-btn" id="btn-new" title="New night (N)" aria-label="New night">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4" /><circle cx="8.5" cy="8.5" r="1.3" class="fill" /><circle cx="15.5" cy="15.5" r="1.3" class="fill" /><circle cx="15.5" cy="8.5" r="1.3" class="fill" /><circle cx="8.5" cy="15.5" r="1.3" class="fill" /><circle cx="12" cy="12" r="1.3" class="fill" /></svg>
+      </button>
+      <span class="dock-sep wander-only" aria-hidden="true"></span>
+      <button class="icon-btn wander-only" id="btn-play" title="Pause (Space)" aria-label="Pause drifting">
+        <svg viewBox="0 0 24 24" class="icon-pause"><path d="M9 6v12M15 6v12" /></svg>
+        <svg viewBox="0 0 24 24" class="icon-play"><path d="M8 5.5v13l10.5-6.5z" class="fill" /></svg>
+      </button>
+      <label class="speed wander-only" title="Drift speed">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4 6-4 9 0s6 4 9 0" /></svg>
+        <input id="speed" type="range" min="0" max="160" value="45" aria-label="Drift speed" />
+      </label>
+      <span class="dock-sep" aria-hidden="true"></span>
+      <button class="icon-btn" id="btn-save" title="Save as PNG (S)" aria-label="Save as PNG">
+        <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-full" title="Fullscreen (F)" aria-label="Toggle fullscreen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-help" title="Shortcuts (?)" aria-label="Keyboard shortcuts">
+        <svg viewBox="0 0 24 24"><path d="M9.2 9.2a2.9 2.9 0 1 1 4.1 2.6c-.8.4-1.3 1-1.3 1.9v.6" /><circle cx="12" cy="17.6" r=".9" class="fill" /></svg>
+      </button>
+    </nav>
+
+    <div class="help glass" id="help" role="dialog" aria-label="Keyboard shortcuts" hidden>
+      <h3>Shortcuts</h3>
+      <dl>
+        <dt><kbd>G</kbd> <kbd>W</kbd></dt><dd>Gallery / Wander</dd>
+        <dt><kbd>N</kbd></dt><dd>A new night</dd>
+        <dt><kbd>Space</kbd></dt><dd>Pause or resume drifting</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Walk through the night</dd>
+        <dt><kbd>S</kbd></dt><dd>Save the view as PNG</dd>
+        <dt><kbd>F</kbd></dt><dd>Fullscreen</dd>
+      </dl>
+      <p>Drag or scroll to wander. Every seed is its own endless night, and the first frame is always its painting.</p>
+    </div>
+
+    <div class="toast glass" id="toast" role="status"></div>
+
+    <div class="intro" id="intro" aria-hidden="true">
+      <p class="intro-kicker">a procedural homage</p>
+      <h1>Gogh <em>with the</em> Flow</h1>
+      <p class="intro-sub">Every night is new. Every stroke is code.</p>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
