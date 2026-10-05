@@ -198,7 +198,7 @@ export class World {
     for (let cx = 0; cx < cols; cx++) {
       for (let cy = 0; cy < rows; cy++) {
         const r = this.rng(c, 3, cx, cy);
-        if (!r.chance(0.6)) continue;
+        if (!r.chance(0.42)) continue;
         const core = H * r.range(0.008, 0.015), halo = core * r.range(2.6, 3.6), m = halo + 6;
         const x = c * CW + cx * cellW + r.range(m, cellW - m);
         const y = yTop + cy * cellH + r.range(Math.min(m, cellH / 2), Math.max(cellH - m, cellH / 2));
