@@ -15,7 +15,7 @@ const P = palette({
   dark: ['#132a6e', '#16307a', '#102563'],
   yellow: ['#f4d24a', '#f6df6e', '#eec23a'],
   cream: ['#fbf1b8', '#fff8d8', '#f6eaa0'],
-  leaf: ['#cbd88a', '#b9cf8c', '#dfe39a'],
+  leaf: ['#e0e09a', '#d6dc9a', '#ecebb0'],
   orange: ['#f2a93b', '#f7c04a', '#eb9a2e'],
 });
 type Key = keyof typeof P;
@@ -26,6 +26,8 @@ const STAR_RINGS: Key[] = ['cream', 'yellow', 'cream', 'pale', 'leaf', 'pale', '
 const MOON_RINGS: Key[] = ['leaf', 'cream', 'leaf', 'leaf', 'cream', 'leaf', 'pale', 'leaf', 'pale', 'light'];
 
 const SP = 8.5;
+/** Swirls are squashed vertically, so they read as rolling waves rather than targets. */
+const SQUASH = 1.4;
 const LAYER_SKY = 1;
 
 export function skyField(w: World): Field {
@@ -40,11 +42,13 @@ export function skyField(w: World): Field {
     vy = lerp(vy, slope * 1.4, Math.exp(-d * d));
 
     for (const o of near.vortices) {
-      const dx = x - o.x, dy = y - o.y, r = Math.hypot(dx, dy) || 1e-3;
+      const dx = x - o.x, dy = y - o.y, r = Math.hypot(dx, dy * SQUASH) || 1e-3;
       const f = 3.2 * Math.exp(-(r * r) / (o.R * o.R));
       if (f < 1e-4) continue;
-      vx += f * ((-dy / r) * o.dir - (0.18 * dx) / r);
-      vy += f * ((dx / r) * o.dir - (0.18 * dy) / r);
+      // Tangent and inward normal of the ellipse through (x, y).
+      const gx = dx, gy = dy * SQUASH * SQUASH, gl = Math.hypot(gx, gy) || 1e-3;
+      vx += f * ((-gy / gl) * o.dir - (0.18 * gx) / gl);
+      vy += f * ((gx / gl) * o.dir - (0.18 * gy) / gl);
     }
     for (const g of near.glows) {
       const dx = x - g.x, dy = y - g.y, r = Math.hypot(dx, dy) || 1e-3, G = g.halo * 1.25;
@@ -77,11 +81,11 @@ function colorKey(w: World, x: number, y: number, rng: Rng): Key {
   }
 
   for (const o of near.vortices) {
-    const r = dist(x, y, o.x, o.y);
+    const r = Math.hypot(x - o.x, (y - o.y) * SQUASH);
     const wgt = 1 - smoothstep(o.R * 0.75, o.R * 1.1, r);
     if (wgt <= 0 || rng.random() > wgt) continue;
     if (r < o.R * 0.15) return rng.chance(0.5) ? 'pale' : 'cream';
-    const ang = Math.atan2(y - o.y, x - o.x);
+    const ang = Math.atan2((y - o.y) * SQUASH, x - o.x);
     const phase = r / (o.R * 0.2) + (o.dir * ang) / TAU * 2;
     const f = phase - Math.floor(phase);
     return f < 0.28 ? 'pale' : f < 0.55 ? 'light' : f < 0.8 ? 'mid' : f < 0.9 ? 'teal' : 'deep';

@@ -271,7 +271,7 @@ export class World {
       id: hash(this.s, c, 12), kind: 'moon', x, y, core,
       halo: core * r.range(2.0, 2.2), ringW: core * 0.3, dir: r.chance(0.5) ? 1 : -1,
       // A thick lit crescent on the lower right, like the original's waning moon.
-      cut: { dx: -core * r.range(0.32, 0.4), dy: -core * r.range(0.22, 0.3), r: core * 0.76 },
+      cut: { dx: -core * r.range(0.4, 0.46), dy: -core * r.range(0.26, 0.32), r: core * 0.72 },
     };
   }
 

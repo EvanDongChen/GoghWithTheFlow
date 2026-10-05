@@ -14,7 +14,7 @@ const P = palette({
   peak: ['#13235a', '#1a2d6a', '#22377a', '#2c4486', '#3a5596'],
   outline: ['#11234a', '#0f1f40', '#16295a'],
   ground: ['#1b2f4f', '#223a5e', '#2b4a66', '#2a4650', '#1e3548', '#365670', '#28445e'],
-  field: ['#4a5a3a', '#5a6440', '#3e5240', '#6a6a44'],
+  field: ['#3e5a4e', '#4a6450', '#3a5254', '#566a4c'],
 });
 
 const slope = (f: (x: number) => number, x: number) => (f(x + 4) - f(x - 4)) / 8;
@@ -100,7 +100,7 @@ function planGround(p: ChunkPlan) {
       const a = 0.9 * w.noise.noise2(px * 0.006 + 30, py * 0.006) + r.range(-0.25, 0.25);
       const len = r.range(12, 22);
       // Large, slow patches of muted fields break up the dark valley floor.
-      const fieldy = w.noise.noise2(px * 0.0015 + 90, py * 0.004) > 0.38 && r.chance(0.6);
+      const fieldy = w.noise.noise2(px * 0.0015 + 90, py * 0.004) > 0.5 && r.chance(0.5);
       const pts: Pt[] = [
         [px - (Math.cos(a) * len) / 2, py - (Math.sin(a) * len) / 2],
         [px, py + r.range(-1, 1)],
