@@ -103,7 +103,9 @@ export interface Church {
   style: 'spire' | 'tower' | 'dome';
 }
 
-export type TreeKind = 'round' | 'poplar' | 'olive' | 'pine' | 'iris' | 'sunflower';
+export type TreeKind = 'round' | 'poplar' | 'olive' | 'pine' | 'iris' | 'sunflower' | 'gnarled';
+/** What stands in the foreground of the gallery painting, opposite the moon. */
+export type Foreground = 'cypress' | 'none' | 'pine' | 'poplars' | 'gnarled';
 export interface Tree { id: number; x: number; y: number; r: number; kind: TreeKind; }
 
 /** A windmill standing on a hill; its sails are drawn by the animation layer so they can turn. */
@@ -136,6 +138,7 @@ const SKY_FORMS: readonly [SkyForm, number][] = [['classic', 0.22], ['waves', 0.
 const SKY_BRUSHES: readonly [SkyBrush, number][] = [['fine', 0.28], ['classic', 0.44], ['bold', 0.28]];
 /** Chance that a chunk beyond the frame holds a big spiral, by sky form. */
 const FORM_SPIRALS: Record<SkyForm, number> = { classic: 0.5, waves: 0.08, great: 0.55, triple: 0.5, diagonal: 0.25, cloudy: 0.35 };
+const FOREGROUNDS: readonly [Foreground, number][] = [['cypress', 0.64], ['none', 0.18], ['pine', 0.06], ['poplars', 0.06], ['gnarled', 0.06]];
 const SKY_STYLES: readonly [SkyStyle, number][] = [['calm', 0.25], ['classic', 0.45], ['turbulent', 0.3]];
 
 /**
@@ -240,6 +243,7 @@ export class World {
   readonly season: Season;
   readonly skyStyle: SkyStyle;
   readonly skyForm: SkyForm;
+  readonly foreground: Foreground;
   readonly skyBrush: SkyBrush;
   /** Which way a diagonal sky streams (1 or -1). */
   readonly skySlant: number;
@@ -267,6 +271,7 @@ export class World {
     this.skyForm = weighted(SKY_FORMS, hashFloat(this.s, 965));
     this.skyBrush = weighted(SKY_BRUSHES, hashFloat(this.s, 966));
     this.skySlant = hashFloat(this.s, 967) < 0.5 ? 1 : -1;
+    this.foreground = weighted(FOREGROUNDS, hashFloat(this.s, 968));
     // Crows come with weather: most nights that feature them are stormy.
     if (this.landmark === 'crows' && r.chance(0.65)) this.mood = 'storm';
     this.moodCache.set(0, this.mood);
@@ -541,7 +546,7 @@ export class World {
       m.vortices.push({ x: cx + side * R * 0.95, y: cy + R * 0.8, R: R * r.range(0.5, 0.65), dir: -dir });
     }
 
-    if (c === cypressChunk) {
+    if (c === cypressChunk && this.foreground === 'cypress') {
       m.cypress = {
         id: hash(this.s, c, 15), x: this.fx(0.25) * FRAME_W,
         tongues: this.cypressVariant().map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy() * 2, w * FRAME_W * r.range(0.92, 1.08), lean, i)),
@@ -843,8 +848,21 @@ export class World {
     const X = (f: number) => fx(f) * FRAME_W;
     const span = (a: number, b: number): [number, number] => [Math.min(X(a), X(b)), Math.max(X(a), X(b))];
     const millX = X(0.84);
+    // The foreground: a cypress (placed elsewhere), or one of these in its place, or nothing at all.
+    const fg: Tree[] = [], open = this.foreground === 'none';
+    if (this.foreground === 'pine') {
+      fg.push({ id: hash(this.s, c, 57, 0), x: X(r.range(0.2, 0.3)), y: H * r.range(0.98, 1.02), r: H * r.range(0.1, 0.12), kind: 'pine' });
+      if (r.chance(0.6)) fg.push({ id: hash(this.s, c, 57, 1), x: X(r.range(0.37, 0.43)), y: H * r.range(0.99, 1.03), r: H * r.range(0.05, 0.07), kind: 'pine' });
+    } else if (this.foreground === 'poplars') {
+      for (let k = 0, n = r.int(3, 5); k < n; k++) fg.push({ id: hash(this.s, c, 58, k), x: X(0.13 + k * 0.07 + r.range(-0.015, 0.015)), y: H * r.range(0.97, 1.03), r: H * r.range(0.065, 0.1), kind: 'poplar' });
+    } else if (this.foreground === 'gnarled') {
+      fg.push({ id: hash(this.s, c, 59, 0), x: X(r.range(0.2, 0.3)), y: H * r.range(0.99, 1.03), r: H * r.range(0.1, 0.12), kind: 'gnarled' });
+      if (r.chance(0.5)) fg.push({ id: hash(this.s, c, 59, 1), x: X(r.range(0.38, 0.44)), y: H * r.range(0.99, 1.03), r: H * r.range(0.05, 0.07), kind: 'gnarled' });
+    }
+    v.trees.push(...fg);
     const blocked = (x: number, y: number, pad: number) =>
       cypresses.some((q) => cypressCovers(q, this.noise, x, y, pad)) || this.inRiver(x, y, pad + 4) ||
+      fg.some((t) => Math.abs(x - t.x) < t.r * (t.kind === 'poplar' ? 0.9 : 2.1) + pad) ||
       (lm === 'mill' && Math.abs(x - millX) < H * 0.07 && y < this.villageTop(x) + H * 0.08);
 
     const cx = this.C.church.x * FRAME_W + r.range(-0.03, 0.03) * FRAME_W;
@@ -886,14 +904,15 @@ export class World {
       }
     }
 
-    const [lo, hi] = span(0.36, 1.03);
+    // With no big tree on the near side, the village spreads across the whole frame.
+    const [lo, hi] = span(open ? 0.04 : 0.36, 1.03);
     this.placeHouses(v, r, c, r.int(46, 56), 800, () => {
       const t = Math.pow(r.random(), 0.85), x = r.range(lo, hi);
       const style: House['style'] = r.chance(0.12) ? 'tall' : r.chance(0.1) ? 'cottage' : 'block';
       return { x, y: this.depthY(x, lerp(0.1, 0.88, t)), size: H * lerp(0.016, 0.036, t), style };
     }, blocked);
 
-    const [tlo, thi] = span(0.4, 1.02);
+    const [tlo, thi] = span(open ? 0.05 : 0.4, 1.02);
     this.treeLine(v, r, c, tlo, thi, false, blocked);
     for (let j = 0, n = r.int(14, 18); j < n; j++) {
       const x = r.range(tlo, thi), t = r.range(0.08, 0.95);
