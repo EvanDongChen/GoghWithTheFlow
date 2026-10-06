@@ -6,6 +6,7 @@ import { planLand } from './land';
 import type { ChunkPlan, Op } from './plan';
 import { planSky } from './sky';
 import { planVillage } from './village';
+import { planWater } from './water';
 
 const PAD = 48;
 
@@ -33,6 +34,7 @@ export function planChunk(world: World, c: number): Op[] {
   const p: ChunkPlan = { world, c, x0: c * CW, x1: (c + 1) * CW, pad: PAD, near: world.near(c), items: [] };
   planSky(p);
   planLand(p);
+  planWater(p);
   planVillage(p);
   planCypresses(p);
   p.items.sort((a, b) => a.layer - b.layer || a.key - b.key);

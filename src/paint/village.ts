@@ -1,11 +1,12 @@
-// The sleeping village: blocky houses with lit windows, church spires, olive trees and bushes.
+// The sleeping village and the countryside around it: houses, cottages, a lit café, churches,
+// trees and irises, haystacks, gaslights, boats and windmills.
 // Forms are modelled with light and shadow from loose dabs of paint, not drawn outlines:
 // moonlit pale fronts, shadowed side walls, dark roofs, and a few dark seams of shadow.
 import { fillPoly, stroke, type Ctx, type Pt } from '../core/brush';
 import { darken, jitter, lighten, palette, type RGB } from '../core/color';
 import { lerp, TAU } from '../core/math';
 import { hashFloat, Rng } from '../core/rng';
-import type { Church, House, Tree } from '../world/world';
+import type { Boat, Church, Haystack, House, Lamp, Mill, Tree } from '../world/world';
 import { inPad, L, type ChunkPlan } from './plan';
 
 const P = palette({
@@ -23,6 +24,19 @@ const P = palette({
   bushDark: ['#112030', '#152a2c', '#1a2a3a'],
   bushMid: ['#22403c', '#284a44', '#2a4458'],
   bushLight: ['#4a7068', '#557a6a', '#4a6f80'],
+  pineDark: ['#10221e', '#142a26', '#18302a'],
+  pineLight: ['#2f5446', '#3a604c', '#2c4c50'],
+  thatch: ['#7a6438', '#8a7040', '#6a5530', '#9a7e48', '#5e4c2c'],
+  cafeWall: ['#e8b84a', '#f0c860', '#d9a43a', '#f4d27a'],
+  awning: ['#d9822b', '#c8702a', '#e8963a', '#b85e24'],
+  irisLeaf: ['#24483a', '#2e5a44', '#1e3c34', '#3a6a4c'],
+  irisFlower: ['#5a5ab4', '#6e62c8', '#4a4aa0', '#7c6ad6', '#3e4c9c'],
+  hay: ['#8a7440', '#a08850', '#6e5c34', '#b89a5a', '#7c6a3c'],
+  hayLit: ['#c8ac68', '#d4b878', '#b49a5c'],
+  mill: ['#5a4a3a', '#4a3c30', '#6a5844', '#3e3228'],
+  millWarm: ['#9a8a6a', '#a8987a', '#8a7a5c'],
+  boat: ['#2e5a6a', '#3a6a5a', '#7a4a2e', '#2a4a7a', '#5a6a3a'],
+  post: ['#141a2a', '#1a2030'],
 });
 
 type Poly = Pt[];
@@ -97,7 +111,20 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
   const d = h.depth, rise = d * 0.35, oh = h.w * 0.08;
   const px = h.x + h.peak * h.w, ridge = top - h.roofH;
   const sw = Math.max(3, h.size * 0.26);
-  const wallPal = h.wall === 'warm' ? P.wallWarm : P.wallLight, roofPal = roofPalette(h.roof);
+  const cafe = h.style === 'cafe', cottage = h.style === 'cottage';
+  const wallPal = cafe ? P.cafeWall : h.wall === 'warm' ? P.wallWarm : P.wallLight;
+  const roofPal = cottage ? P.thatch : cafe ? P.roofBlue : roofPalette(h.roof);
+
+  if (cafe) {
+    // The café spills warm light onto the ground in front of it.
+    const g = ctx.createRadialGradient(h.x, bot, 0, h.x, bot, h.w * 1.6);
+    g.addColorStop(0, 'rgba(255,200,90,0.5)');
+    g.addColorStop(1, 'rgba(255,180,70,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(h.x, bot + h.size * 0.1, h.w * 1.6, h.w * 0.6, 0, 0, TAU);
+    ctx.fill();
+  }
 
   const front = M([[l, top], [r, top], [r, bot], [l, bot]]);
   const side = M([[r, top], [r + d, top - rise], [r + d, bot - rise], [r, bot]]);
@@ -115,6 +142,24 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
     const shadeRoof = roofPal.map((c) => darken(c, 0.18));
     paintFace(ctx, rng, roofSide, shadeRoof, Math.atan2(-rise, d) + (h.side < 0 ? Math.PI : 0), sw * 0.9);
     paintFace(ctx, rng, M([[l - oh, top + 1], [px, ridge], [r + oh, top + 1]]), roofPal, 0, sw * 0.9);
+    if (cottage) {
+      // Thatch: a few long ragged strokes along the eave.
+      for (let i = 0; i < 3; i++) {
+        const yy = top - h.roofH * (0.1 + i * 0.22);
+        const k = (yy - ridge) / (top - ridge);
+        stroke(ctx, rng, M([[lerp(px, l - oh, k), yy], [h.x, yy + rng.range(-1, 1)], [lerp(px, r + oh, k), yy]]), sw * 0.55, jitter(rng.pick(P.thatch), rng, 20));
+      }
+    }
+  }
+
+  if (cafe) {
+    // A striped orange awning over the terrace, with tables picked out below.
+    const ay = top + h.h * 0.6, ah = h.h * 0.16;
+    paintFace(ctx, rng, M([[l - oh, ay], [r + oh, ay], [r + oh * 2, ay + ah], [l - oh * 2, ay + ah]]), P.awning, 0, sw * 0.7, 2);
+    for (let i = 0; i < 3; i++) {
+      const tx = mx(lerp(l, r, 0.2 + i * 0.3)), ty = bot - h.h * 0.08;
+      stroke(ctx, rng, [[tx - sw * 0.6, ty], [tx + sw * 0.6, ty]], sw * 0.5, P.cafeWall[3]);
+    }
   }
 
   if (h.chimney && !h.flatRoof) {
@@ -138,9 +183,13 @@ function drawHouse(ctx: Ctx, rng: Rng, h: House) {
 export function houseWindows(h: House): { x: number; y: number; w: number; h: number }[] {
   const l = h.x - h.w / 2, r = h.x + h.w / 2, top = h.y - h.h;
   const out = [];
-  for (let i = 0; i < h.windows; i++) {
-    const x = lerp(l, r, h.windows === 1 ? 0.5 : 0.28 + i * 0.44);
-    out.push({ x: h.x + h.side * (x - h.x), y: top + h.h * 0.5, w: Math.max(2.5, h.w * 0.13), h: h.h * 0.36 });
+  const rows = h.style === 'tall' ? [0.3, 0.68] : h.style === 'cafe' ? [0.36] : [0.5];
+  const wh = h.style === 'tall' ? 0.2 : h.style === 'cafe' ? 0.3 : 0.36;
+  for (const row of rows) {
+    for (let i = 0; i < h.windows; i++) {
+      const x = lerp(l, r, h.windows === 1 ? 0.5 : 0.28 + i * 0.44);
+      out.push({ x: h.x + h.side * (x - h.x), y: top + h.h * row, w: Math.max(2.5, h.w * 0.13), h: h.h * wh });
+    }
   }
   return out;
 }
@@ -158,6 +207,19 @@ function drawChurch(ctx: Ctx, rng: Rng, c: Church) {
   paintFace(ctx, rng, [[l, top], [r, top], [r, c.base], [l, c.base]], wallPal, Math.PI / 2, sw);
   paintFace(ctx, rng, [[tl, ttop], [tr, ttop], [tr, c.base], [tl, c.base]], wallPal.map((x) => darken(x, 0.08)), Math.PI / 2, sw * 0.9);
 
+  if (c.style === 'tower') {
+    drawBellTower(ctx, rng, c, tl, tr, ttop, sw);
+    seam(ctx, rng, [l, top + 1], [r, top + 1], 2.2);
+    windowDab(ctx, rng, lerp(tr, r, 0.5), top + c.bodyH * 0.5, 3, c.bodyH * 0.35);
+    return;
+  }
+  if (c.style === 'dome') {
+    drawDome(ctx, rng, c, top, sw);
+    seam(ctx, rng, [l, top + 1], [r, top + 1], 2.2);
+    windowDab(ctx, rng, c.x, top + c.bodyH * 0.5, 3, c.bodyH * 0.35);
+    return;
+  }
+
   // The spire: long dark strokes tapering to a needle point, lit down one side.
   const sh = ttop - c.spireTop;
   fillPoly(ctx, [[tl - 2, ttop], [mid, c.spireTop], [tr + 2, ttop]], P.roofBlue[3]);
@@ -173,6 +235,35 @@ function drawChurch(ctx: Ctx, rng: Rng, c: Church) {
   windowDab(ctx, rng, lerp(tr, r, 0.5), top + c.bodyH * 0.5, 3, c.bodyH * 0.35);
 }
 
+/** A square bell tower that rises above the roof and ends in a short pyramid cap. */
+function drawBellTower(ctx: Ctx, rng: Rng, c: Church, tl: number, tr: number, ttop: number, sw: number) {
+  const tw = tr - tl, top2 = ttop - c.towerH * 1.4, mid = (tl + tr) / 2;
+  paintFace(ctx, rng, [[tl - 1, top2], [tr + 1, top2], [tr + 1, ttop + 2], [tl - 1, ttop + 2]], P.wallLight.map((x) => darken(x, 0.05)), Math.PI / 2, sw * 0.9);
+  paintFace(ctx, rng, [[tl - 3, top2], [mid, top2 - tw * 0.9], [tr + 3, top2]], P.roofRust, -Math.PI / 2, sw * 0.8);
+  windowDab(ctx, rng, mid, top2 + c.towerH * 0.4, tw * 0.25, c.towerH * 0.45);
+  seam(ctx, rng, [tl - 3, top2 + 1], [tr + 3, top2 + 1], 2);
+}
+
+/** A dome on a drum, with a little lantern on top. */
+function drawDome(ctx: Ctx, rng: Rng, c: Church, top: number, sw: number) {
+  const R = c.bodyW * 0.32, cy = top - c.bodyH * 0.25;
+  paintFace(ctx, rng, [[c.x - R * 0.9, cy], [c.x + R * 0.9, cy], [c.x + R * 0.9, top + 2], [c.x - R * 0.9, top + 2]], P.wallLight, Math.PI / 2, sw * 0.8);
+  ctx.fillStyle = 'rgba(31,53,103,1)';
+  ctx.beginPath();
+  ctx.ellipse(c.x, cy, R, R * 0.95, 0, Math.PI, TAU);
+  ctx.fill();
+  for (let i = 0; i < 14; i++) {
+    // Ribs of the dome: arcs from the drum up to the crown.
+    const u = rng.range(-0.9, 0.9), pts: Pt[] = [];
+    for (let j = 0; j <= 4; j++) {
+      const a = Math.PI + (Math.PI / 2) * (j / 4);
+      pts.push([c.x + u * R * Math.cos(a - Math.PI) * -1 * (1 - j / 5), cy - Math.sin(a - Math.PI) * R * 0.95 * (j / 4)]);
+    }
+    stroke(ctx, rng, pts, sw * 0.8, jitter(rng.pick(u > 0.3 ? P.roofGreen : P.roofBlue), rng, 16));
+  }
+  paintFace(ctx, rng, [[c.x - R * 0.15, cy - R * 1.2], [c.x + R * 0.15, cy - R * 1.2], [c.x + R * 0.15, cy - R * 0.85], [c.x - R * 0.15, cy - R * 0.85]], P.wallLight, Math.PI / 2, sw * 0.5);
+}
+
 /** A rough blob, so tree silhouettes aren't perfect ellipses. */
 function blob(rng: Rng, x: number, y: number, rx: number, ry: number): Poly {
   const pts: Poly = [], n = 18, ph = rng.range(0, TAU);
@@ -183,7 +274,105 @@ function blob(rng: Rng, x: number, y: number, rx: number, ry: number): Poly {
   return pts;
 }
 
+function drawPine(ctx: Ctx, rng: Rng, t: Tree) {
+  // Umbrella pine: a bare, leaning trunk under a flat, wide canopy.
+  const lean = rng.range(-0.25, 0.25), trunkTop = t.y - t.r * 2.2, cx = t.x + lean * t.r * 2;
+  for (let i = 0; i < 3; i++) {
+    stroke(ctx, rng, [[t.x + rng.range(-2, 2), t.y], [lerp(t.x, cx, 0.5) + rng.range(-2, 2), (t.y + trunkTop) / 2], [cx + rng.range(-2, 2), trunkTop]], rng.range(3, 4.5), jitter(rng.pick(P.mill), rng, 12));
+  }
+  const rx = t.r * 1.8, ry = t.r * 0.55, cy = trunkTop - ry * 0.4;
+  fillPoly(ctx, blob(rng, cx, cy, rx, ry), P.pineDark[0]);
+  const n = Math.round((rx * ry) / 8);
+  for (let i = 0; i < n; i++) {
+    const a = rng.range(0, TAU), rr = Math.sqrt(rng.random()) * 0.97;
+    const ox = Math.cos(a) * rr, oy = Math.sin(a) * rr, x = cx + ox * rx, y = cy + oy * ry;
+    const pal = -oy + rng.range(-0.5, 0.5) > 0.3 ? P.pineLight : P.pineDark;
+    stroke(ctx, rng, [[x - 6, y + rng.range(-1, 1)], [x, y + rng.range(-1.5, 1.5)], [x + 6, y + rng.range(-1, 1)]], rng.range(3.5, 5.5), jitter(rng.pick(pal), rng, 14));
+  }
+}
+
+function drawIris(ctx: Ctx, rng: Rng, t: Tree) {
+  // A clump of sword-shaped leaves with violet flowers among them.
+  const n = rng.int(9, 15);
+  for (let i = 0; i < n; i++) {
+    const bx = t.x + rng.range(-t.r, t.r), len = t.r * rng.range(1.2, 2.2), bend = rng.range(-0.6, 0.6);
+    const pts: Pt[] = [[bx, t.y], [bx + bend * len * 0.2, t.y - len * 0.5], [bx + bend * len * 0.55, t.y - len]];
+    stroke(ctx, rng, pts, rng.range(3, 4.5), jitter(rng.pick(P.irisLeaf), rng, 14));
+  }
+  for (let i = 0, m = rng.int(3, 6); i < m; i++) {
+    const fx = t.x + rng.range(-t.r, t.r), fy = t.y - t.r * rng.range(1.1, 2);
+    for (let k = 0; k < 3; k++) {
+      const a = rng.range(0, TAU);
+      stroke(ctx, rng, [[fx, fy], [fx + Math.cos(a) * 5, fy + Math.sin(a) * 4]], rng.range(4, 5.5), jitter(rng.pick(P.irisFlower), rng, 18));
+    }
+    stroke(ctx, rng, [[fx, fy - 1], [fx + 1, fy]], 2.2, P.window[2]);
+  }
+}
+
+function drawStack(ctx: Ctx, rng: Rng, s: Haystack) {
+  // A haystack: a rounded dome built from curved golden strokes, moonlit along the top.
+  stroke(ctx, rng, [[s.x - s.w * 0.6, s.y + 2], [s.x, s.y + 4], [s.x + s.w * 0.6, s.y + 2]], s.w * 0.18, jitter(P.seam[0], rng, 8));
+  const pts: Pt[] = [];
+  for (let i = 0; i <= 16; i++) {
+    const a = Math.PI + (Math.PI * i) / 16;
+    pts.push([s.x + Math.cos(a) * s.w * 0.5, s.y + Math.sin(a) * s.h * (1 + 0.15 * Math.sin(a * 2))]);
+  }
+  fillPoly(ctx, pts, P.hay[2]);
+  const n = Math.round((s.w * s.h) / 22);
+  for (let i = 0; i < n; i++) {
+    const u = rng.range(-0.95, 0.95), v = rng.random() * Math.sqrt(1 - u * u);
+    const x = s.x + u * s.w * 0.5, y = s.y - v * s.h * 0.95;
+    const a = Math.atan2(-v, u) + Math.PI / 2 + rng.range(-0.3, 0.3);
+    const len = rng.range(6, 11);
+    const pal = v > 0.6 && u < 0.3 ? P.hayLit : P.hay;
+    stroke(ctx, rng, [[x - Math.cos(a) * len / 2, y - Math.sin(a) * len / 2], [x + Math.cos(a) * len / 2, y + Math.sin(a) * len / 2]], rng.range(3, 4.5), jitter(rng.pick(pal), rng, 18));
+  }
+}
+
+function drawLamp(ctx: Ctx, rng: Rng, l: Lamp) {
+  // A gaslight: a dark post and a bright lantern; the animation layer adds its glow.
+  const top = l.y - l.h;
+  stroke(ctx, rng, [[l.x, l.y], [l.x + rng.range(-0.5, 0.5), (l.y + top) / 2], [l.x, top]], 2.6, rng.pick(P.post));
+  const g = ctx.createRadialGradient(l.x, top, 0, l.x, top, l.h * 0.7);
+  g.addColorStop(0, 'rgba(255,220,120,0.55)');
+  g.addColorStop(1, 'rgba(255,200,90,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(l.x, top, l.h * 0.7, 0, TAU);
+  ctx.fill();
+  stroke(ctx, rng, [[l.x, top - 3], [l.x, top + 3]], 5, P.window[2]);
+  stroke(ctx, rng, [[l.x, top - 1], [l.x, top + 1]], 2.5, [255, 250, 220]);
+}
+
+function drawBoat(ctx: Ctx, rng: Rng, b: Boat) {
+  // A rowing boat pulled up at the water's edge: a curved hull and a bright gunwale.
+  const half = b.w / 2, d = b.dir;
+  const hull: Pt[] = [[b.x - half * d, b.y - b.w * 0.12], [b.x, b.y + b.w * 0.08], [b.x + half * d, b.y - b.w * 0.2]];
+  const col = P.boat[Math.floor(b.hue * P.boat.length)];
+  for (let i = 0; i < 3; i++) stroke(ctx, rng, hull.map(([x, y]) => [x, y + i * 2.5] as Pt), b.w * 0.12, jitter(darken(col, i * 0.15), rng, 14));
+  stroke(ctx, rng, hull.map(([x, y]) => [x, y - 2] as Pt), 2.4, lighten(col, 0.45));
+}
+
+function drawMill(ctx: Ctx, rng: Rng, m: Mill) {
+  // The tower of a windmill: a tapering body with a cap. The turning sails are added by the animation layer.
+  const bw = m.w, tw = m.w * 0.62, top = m.y - m.h;
+  const pal = m.warm ? P.millWarm : P.mill;
+  stroke(ctx, rng, [[m.x - bw * 0.8, m.y + 2], [m.x, m.y + 4], [m.x + bw * 0.8, m.y + 2]], bw * 0.3, jitter(P.seam[0], rng, 8));
+  paintFace(ctx, rng, [[m.x - tw / 2, top], [m.x + tw / 2, top], [m.x + bw / 2, m.y], [m.x - bw / 2, m.y]], pal, Math.PI / 2, Math.max(3, bw * 0.16));
+  paintFace(ctx, rng, [[m.x + tw * 0.1, top], [m.x + tw / 2, top], [m.x + bw / 2, m.y], [m.x + bw * 0.15, m.y]], pal.map((c) => darken(c, 0.3)), Math.PI / 2, Math.max(3, bw * 0.14), 1);
+  paintFace(ctx, rng, [[m.x - tw * 0.7, top + 2], [m.x, top - m.h * 0.16], [m.x + tw * 0.7, top + 2]], P.roofBlue, 0, Math.max(3, bw * 0.14));
+  windowDab(ctx, rng, m.x - bw * 0.1, m.y - m.h * 0.18, Math.max(2.5, bw * 0.12), m.h * 0.1);
+  windowDab(ctx, rng, m.x, top + m.h * 0.3, Math.max(2, bw * 0.08), m.h * 0.06);
+}
+
+/** Where a windmill's sails are hung, shared with the animation layer that turns them. */
+export function millHub(m: Mill): Pt {
+  return [m.x, m.y - m.h * 0.92];
+}
+
 function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
+  if (t.kind === 'pine') return drawPine(ctx, rng, t);
+  if (t.kind === 'iris') return drawIris(ctx, rng, t);
   const poplar = t.kind === 'poplar', olive = t.kind === 'olive';
   const rx = t.r * (poplar ? 0.55 : olive ? 1.25 : 1), ry = t.r * (poplar ? 2.1 : olive ? 0.65 : 0.9), cy = t.y - ry * 0.8;
   const dark = olive ? P.treeDark : P.bushDark, mid = olive ? P.treeMid : P.bushMid, light = olive ? P.treeLight : P.bushLight;
@@ -207,7 +396,7 @@ function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
 }
 
 export function planVillage(p: ChunkPlan) {
-  const { houses, churches, trees } = p.near;
+  const { houses, churches, trees, mills, stacks, lamps, boats } = p.near;
   const add = (x: number, reach: number, y: number, id: number, draw: (ctx: Ctx, rng: Rng) => void) => {
     if (!inPad(p, x, reach)) return;
     // Back to front: farther (higher on the canvas) things are drawn first.
@@ -215,5 +404,9 @@ export function planVillage(p: ChunkPlan) {
   };
   for (const h of houses) add(h.x, h.w + h.depth + 10, h.y, h.id, (ctx, rng) => drawHouse(ctx, rng, h));
   for (const c of churches) add(c.x, c.bodyW + 20, c.base, c.id, (ctx, rng) => drawChurch(ctx, rng, c));
-  for (const t of trees) add(t.x, t.r * 1.4 + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
+  for (const t of trees) add(t.x, t.r * 2.2 + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
+  for (const m of mills) add(m.x, m.w + 10, m.y, m.id, (ctx, rng) => drawMill(ctx, rng, m));
+  for (const s of stacks) add(s.x, s.w + 10, s.y, s.id, (ctx, rng) => drawStack(ctx, rng, s));
+  for (const l of lamps) add(l.x, l.h + 10, l.y, l.id, (ctx, rng) => drawLamp(ctx, rng, l));
+  for (const b of boats) add(b.x, b.w + 10, b.y, b.id, (ctx, rng) => drawBoat(ctx, rng, b));
 }

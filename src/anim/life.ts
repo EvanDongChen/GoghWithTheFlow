@@ -5,6 +5,7 @@
 //  - Star and moon halos shimmer: arcs of paint circle them and their cores breathe.
 //  - Village windows flicker like candlelight.
 //  - Now and then a shooting star crosses the sky.
+//  - Windmill sails turn, gaslights flicker and their reflections shimmer on the river.
 //
 // Everything lives in world coordinates, so it works the same in the gallery and while wandering.
 
@@ -13,8 +14,8 @@ import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
 import type { Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
-import { houseWindows } from '../paint/village';
-import { cypressCovers, World, type Glow } from '../world/world';
+import { houseWindows, millHub } from '../paint/village';
+import { cypressCovers, World, type Glow, type Mill } from '../world/world';
 
 interface Particle {
   x: number; y: number;
@@ -115,10 +116,59 @@ export class Life {
     }
   }
 
+  /** Things in view from every chunk near it, without duplicates. */
+  private inView<T extends { id: number; x: number }>(view: View, pick: (n: ReturnType<World['near']>) => T[], margin = 300): T[] {
+    const seen = new Set<number>(), out: T[] = [];
+    for (let c = World.chunkOf(view.x0) - 1; c <= World.chunkOf(view.x1) + 1; c++) {
+      for (const it of pick(this.world.near(c))) {
+        if (seen.has(it.id) || it.x < view.x0 - margin || it.x > view.x1 + margin) continue;
+        seen.add(it.id);
+        out.push(it);
+      }
+    }
+    return out;
+  }
+
+  /** Windmill sails: four latticed blades round a hub, turned to `angle`. */
+  private drawSails(ctx: CanvasRenderingContext2D, view: View, m: Mill, angle: number) {
+    const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
+    const [hx, hy] = millHub(m), L = m.sail, wBlade = L * 0.2;
+    ctx.save();
+    ctx.translate(sx(hx), hy * k);
+    ctx.scale(k, k);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.rotate(angle + (i * Math.PI) / 2);
+      // The spar, then the lattice frame of the sail beside it.
+      ctx.strokeStyle = 'rgba(42,30,22,0.95)';
+      ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, 0); ctx.stroke();
+      ctx.strokeStyle = m.warm ? 'rgba(214,196,150,0.9)' : 'rgba(178,196,214,0.85)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(L * 0.2, 1, L * 0.8, wBlade);
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      for (let j = 1; j < 6; j++) { const x = L * 0.2 + (L * 0.8 * j) / 6; ctx.moveTo(x, 1); ctx.lineTo(x, 1 + wBlade); }
+      ctx.moveTo(L * 0.2, 1 + wBlade / 2); ctx.lineTo(L, 1 + wBlade / 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#2a1e16';
+    ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  /** The parts of the scene that live outside the baked chunks; drawn even when the painting is still. */
+  drawStatic(ctx: CanvasRenderingContext2D, view: View) {
+    for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph);
+  }
+
   draw(ctx: CanvasRenderingContext2D, view: View) {
     const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
     const chunks: number[] = [];
     for (let c = World.chunkOf(view.x0) - 1; c <= World.chunkOf(view.x1) + 1; c++) chunks.push(c);
+    for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph + this.t * m.speed);
     const seen = new Set<number>(), glows: Glow[] = [];
     for (const c of chunks) for (const g of this.world.near(c).glows) if (!seen.has(g.id) && g.x > view.x0 - 300 && g.x < view.x1 + 300) { seen.add(g.id); glows.push(g); }
 
@@ -181,6 +231,27 @@ export class Life {
           ctx.drawImage(this.warm, sx(w.x) - R, w.y * k - R, R * 2, R * 2);
         }
       }
+    }
+
+    // Gaslights flicker, and their reflections shimmer on the water below.
+    for (const l of this.inView(view, (n) => n.lamps, 60)) {
+      const f = 0.7 + 0.2 * Math.sin(this.t * 5.3 + (l.id % 17)) + 0.1 * Math.sin(this.t * 11 + (l.id % 7));
+      const R = l.h * 1.1 * k, ly = (l.y - l.h) * k;
+      ctx.globalAlpha = 0.45 * f;
+      ctx.drawImage(this.warm, sx(l.x) - R, ly - R, R * 2, R * 2);
+      if (this.world.riverWeight(l.x) < 0.3) continue;
+      const y0 = this.world.riverTop(l.x) + 4, y1 = this.world.riverBottom(l.x) - 3;
+      ctx.globalAlpha = 0.5 * f;
+      ctx.strokeStyle = 'rgba(255,214,110,1)';
+      ctx.lineWidth = 2.6 * k;
+      ctx.beginPath();
+      for (let y = y0, i = 0; y < y1; y += 7, i++) {
+        const half = (3 + 8 * ((y - y0) / Math.max(1, y1 - y0))) * (0.6 + 0.4 * Math.sin(this.t * 3 + i * 1.3 + l.id));
+        const x = l.x + 3 * Math.sin(this.t * 2.1 + i * 0.9 + (l.id % 5));
+        ctx.moveTo(sx(x - half), y * k);
+        ctx.lineTo(sx(x + half), y * k);
+      }
+      ctx.stroke();
     }
 
     // Shooting star.

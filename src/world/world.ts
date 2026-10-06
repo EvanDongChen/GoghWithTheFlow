@@ -298,6 +298,13 @@ export class World {
     return Math.max(classic, this.biomeWeight(x, 'river'));
   }
 
+  /** How much of the ground at x is wheat field: wheat and mill regions, or the haystack landmark. */
+  wheatWeight(x: number): number {
+    const f = this.fx(x / FRAME_W);
+    const classic = this.landmark === 'haystacks' ? this.classicWeight(x) * smoothstep(0.36, 0.44, f) * (1 - smoothstep(0.66, 0.74, f)) : 0;
+    return Math.max(classic, this.biomeWeight(x, 'wheat'), 0.6 * this.biomeWeight(x, 'mill'));
+  }
+
   /** Centre line of the river, as a depth into the valley. */
   private riverCenter(x: number): number {
     const t = this.landmark === 'river' ? lerp(0.36, 0.64, this.classicWeight(x)) : 0.36;
