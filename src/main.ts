@@ -2,7 +2,7 @@ import { Life, type View } from './anim/life';
 import { Music } from './audio/music';
 import { clamp } from './core/math';
 import { ChunkPool } from './paint/pool';
-import { renderPostcard } from './postcard';
+import { DESIGNS, renderPostcard, type Design, type PostcardInfo } from './postcard';
 import { CW, FRAME_W, H, MOOD_NAMES, World, type Biome, type Landmark } from './world/world';
 
 type Mode = 'gallery' | 'wander';
@@ -28,6 +28,7 @@ const REGION_NAMES: Record<Biome, string> = {
 const LANDMARK_NAMES: Record<Landmark, string> = {
   none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace', sunflowers: 'Sunflowers in the foreground', crows: 'Crows over the wheat',
 };
+const PRECIP_NAMES = { rain: 'rain falling', snow: 'snow falling', petals: 'blossom on the wind', leaves: 'leaves on the wind' };
 const MOON_NAMES = { crescent: 'Crescent moon', half: 'Half moon', full: 'Full moon' };
 
 class App {
@@ -206,7 +207,7 @@ class App {
     if (t - this.lastScene > 400) {
       this.lastScene = t;
       this.music.setScene({ x: sceneX, mode: this.mode });
-      const mood = MOOD_NAMES[this.world.moodAt(sceneX)], el = $('hud-mood');
+      const mood = `${MOOD_NAMES[this.world.moodAt(sceneX)]} · ${this.world.season}`, el = $('hud-mood');
       if (el.textContent !== mood) el.textContent = mood;
     }
 
@@ -334,33 +335,95 @@ class App {
     }, 'image/png');
   }
 
-  /** Save the view as a postcard carrying the same details as the gallery placard. */
-  private async save(plain = false) {
-    // Wait (briefly) for the visible chunks to finish painting, so the print is never half-blank.
+  /** Wait (briefly) for the visible chunks to finish painting, so a print is never half-blank. */
+  private async untilPainted() {
     const visible = () => (this.mode === 'gallery' ? [0, 1] : this.visibleChunks());
-    if (visible().some((c) => !this.pool.get(c)?.done)) {
-      this.toast('Still painting. Your postcard will print in a moment…');
-      for (let i = 0; i < 100 && visible().some((c) => !this.pool.get(c)?.done); i++) await new Promise((r) => setTimeout(r, 200));
-    }
+    if (!visible().some((c) => !this.pool.get(c)?.done)) return;
+    this.toast('Still painting. One moment…');
+    for (let i = 0; i < 100 && visible().some((c) => !this.pool.get(c)?.done); i++) await new Promise((r) => setTimeout(r, 200));
+  }
+
+  /** Save the plain painting, without a card. */
+  private async savePlain() {
+    await this.untilPainted();
+    const { out, x0 } = this.compose();
+    this.download(out, `starry-night-${this.world.seed}${this.mode === 'wander' ? `-${Math.round(x0)}` : ''}.png`);
+  }
+
+  // ------------------------------------------------------------ postcards
+
+  private card: { base: Omit<PostcardInfo, 'design' | 'message'>; name: string } | null = null;
+  private design: Design = 'classic';
+  private previewTimer = 0;
+  private previewJob = 0;
+
+  /** Open the postcard dialog for the current view: pick a design, write a message, save. */
+  private async openCard() {
+    if (!$('card-dialog').hidden) return;
+    await this.untilPainted();
     const { out, x0, w, strokes } = this.compose(), wander = this.mode === 'wander', wd = this.world;
     const mid = x0 + w / 2, suffix = wander ? `-${Math.round(this.camX)}` : '';
-    if (plain) return this.download(out, `starry-night-${wd.seed}${suffix}.png`);
-
     const moon = wd.near(World.chunkOf(mid)).glows.find((g) => g.kind === 'moon');
+    const precip = wd.precipAt(mid);
+    const season = wd.season[0].toUpperCase() + wd.season.slice(1);
     const details: [string, string][] = [
       ['Sky', MOOD_NAMES[wd.moodAt(mid)]],
+      ['Season', precip ? `${season}, ${PRECIP_NAMES[precip]}` : season],
       ['Moon', moon?.phase ? MOON_NAMES[moon.phase] : 'No moon in view'],
       [wander ? 'Country' : 'Landmark', wander ? REGION_NAMES[wd.biomeAt(mid)] : LANDMARK_NAMES[wd.landmark]],
       ['Brushstrokes', strokes ? strokes.toLocaleString() : 'Countless'],
     ];
     if (!wander && wd.flipped) details.push(['Composition', 'Mirrored']);
+    this.card = {
+      name: `postcard-${wd.seed}${suffix}`,
+      base: {
+        art: out, seed: wd.seed, title: 'The Starry Night', details,
+        lines: ['After Vincent van Gogh', 'Procedural oil on canvas, 2026'],
+        place: wander ? `${(mid / 1000).toFixed(2)} km into the night` : 'The gallery',
+      },
+    };
+    this.toggleAbout(false);
+    $('card-dialog').hidden = false;
+    this.syncDesignButtons();
+    this.queuePreview(0);
+  }
+
+  private closeCard() {
+    $('card-dialog').hidden = true;
+    this.card = null;
+  }
+
+  private syncDesignButtons() {
+    document.querySelectorAll<HTMLButtonElement>('#card-designs button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.design === this.design)));
+  }
+
+  private currentCard(): PostcardInfo | null {
+    return this.card ? { ...this.card.base, design: this.design, message: $<HTMLTextAreaElement>('card-message').value } : null;
+  }
+
+  private queuePreview(delay = 200) {
+    clearTimeout(this.previewTimer);
+    this.previewTimer = window.setTimeout(async () => {
+      const info = this.currentCard();
+      if (!info) return;
+      const job = ++this.previewJob, card = await renderPostcard(info);
+      if (job !== this.previewJob || !this.card) return;
+      const pv = $<HTMLCanvasElement>('card-preview');
+      pv.width = 720;
+      pv.height = 480;
+      pv.getContext('2d')!.drawImage(card, 0, 0, pv.width, pv.height);
+    }, delay);
+  }
+
+  private async saveCard() {
+    const info = this.currentCard();
+    if (!info || !this.card) return;
+    const name = this.card.name;
     this.toast('Printing your postcard…');
-    const card = await renderPostcard({
-      art: out, seed: wd.seed, title: 'The Starry Night', details,
-      lines: ['After Vincent van Gogh', 'Procedural oil on canvas, 2026'],
-      place: wander ? `${(mid / 1000).toFixed(2)} km into the night` : 'The gallery',
-    });
-    this.download(card, `postcard-${wd.seed}${suffix}.png`);
+    const card = await renderPostcard(info);
+    this.download(card, `${name}-${info.design}.png`);
+    try { localStorage.setItem('gogh-design', info.design); } catch { /* private mode */ }
+    this.closeCard();
   }
 
   private async share() {
@@ -412,7 +475,24 @@ class App {
       b.onclick = () => this.setMode(b.dataset.mode as Mode);
     });
     $('btn-new').onclick = () => this.newSeed();
-    $('btn-save').onclick = () => this.save();
+    $('btn-save').onclick = () => this.openCard();
+    $('card-close').onclick = () => this.closeCard();
+    $('card-save').onclick = () => this.saveCard();
+    $('card-plain').onclick = () => { this.closeCard(); this.savePlain(); };
+    const msg = $<HTMLTextAreaElement>('card-message');
+    msg.oninput = () => { $('card-count').textContent = String(140 - msg.value.length); this.queuePreview(); };
+    msg.onkeydown = (e) => { if (e.key === 'Escape') this.closeCard(); e.stopPropagation(); };
+    const designs = $('card-designs');
+    for (const d of DESIGNS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.design = d.id;
+      b.textContent = d.name;
+      b.setAttribute('role', 'radio');
+      b.onclick = () => { this.design = d.id; this.syncDesignButtons(); this.queuePreview(40); };
+      designs.append(b);
+    }
+    try { const saved = localStorage.getItem('gogh-design') as Design | null; if (saved && DESIGNS.some((d) => d.id === saved)) this.design = saved; } catch { /* ignore */ }
     $('btn-share').onclick = () => this.share();
     $('btn-full').onclick = () => this.toggleFullscreen();
     $('btn-about').onclick = (e) => { e.stopPropagation(); this.toggleAbout(); };
@@ -487,13 +567,13 @@ class App {
       if (k === 'g') this.setMode('gallery');
       else if (k === 'w') this.setMode('wander');
       else if (k === 'n') this.newSeed();
-      else if (k === 's') this.save(e.shiftKey);
+      else if (k === 's') { if (e.shiftKey) this.savePlain(); else this.openCard(); }
       else if (k === 'm') this.setSound(!this.music.on);
       else if (k === 'a') this.setAnimating(!this.animating);
       else if (k === 'c') this.share();
       else if (k === 'f') this.toggleFullscreen();
       else if (k === '?' || k === 'i') this.toggleAbout();
-      else if (k === 'escape') this.toggleAbout(false);
+      else if (k === 'escape') { this.toggleAbout(false); this.closeCard(); }
       else if (k === ' ' && this.mode === 'wander') { e.preventDefault(); this.setPlaying(!this.playing); }
       else if (k === 'arrowright' || k === 'arrowleft') {
         if (this.mode === 'gallery') this.setMode('wander');
