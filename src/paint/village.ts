@@ -324,16 +324,50 @@ function drawSunflower(ctx: Ctx, rng: Rng, t: Tree) {
   }
 }
 
-/** A crow in flight, wings raised by `flap` (-1..1), facing `dir`. Used by the animation layer and for stills. */
+/**
+ * A crow in flight, wings raised by `flap` (-1..1), facing `dir`. Used by the animation layer and for stills.
+ * Drawn as a dark silhouette with feathered, pointed wings, then a few brush strokes of blue-black sheen so it
+ * sits in the painting like the crows of Van Gogh's last wheatfield.
+ */
 export function drawCrow(ctx: Ctx, rng: Rng, x: number, y: number, size: number, flap: number, dir: 1 | -1) {
-  const wing = size * 1.15, lift = flap * size * 0.7;
-  const body: Pt[] = [[x - dir * size * 0.5, y + size * 0.06], [x, y], [x + dir * size * 0.5, y - size * 0.05]];
-  stroke(ctx, rng, body, size * 0.5, jitter(rng.pick(P.crow), rng, 8));
+  const ink = P.crow[0], sheen: RGB = [44, 54, 84];
+  const s = size;
   for (const side of [-1, 1]) {
-    const tip: Pt = [x + side * wing, y - lift - size * 0.1], mid: Pt = [x + side * wing * 0.5, y - lift * 0.55 - size * 0.32];
-    stroke(ctx, rng, [[x + side * size * 0.1, y - size * 0.05], mid, tip], size * 0.36, jitter(rng.pick(P.crow), rng, 8));
+    // The wing is a curved blade: a smooth leading edge up to a pointed tip, and a scalloped trailing edge of primaries.
+    const rx = x + side * s * 0.12, ry = y - s * 0.06;
+    const tip: Pt = [x + side * s * 1.3, y - flap * s * 0.8 - s * 0.12];
+    const ctrl: Pt = [x + side * s * 0.65, y - flap * s * 0.55 - s * 0.62];
+    const poly: Pt[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8, u = 1 - t;
+      poly.push([u * u * rx + 2 * u * t * ctrl[0] + t * t * tip[0], u * u * ry + 2 * u * t * ctrl[1] + t * t * tip[1]]);
+    }
+    // Back along the trailing edge: four feather points, longest at the tip, notched between them.
+    const droop = s * 0.34 + flap * s * 0.1;
+    for (let i = 1; i <= 4; i++) {
+      const t = 1 - i / 5, wx = lerp(rx, tip[0], t), wy = lerp(ry, tip[1], t);
+      const reach = droop * (0.55 + 0.45 * t) * rng.range(0.9, 1.1);
+      poly.push([wx + side * s * 0.05, wy + reach], [wx - side * s * 0.1, wy + reach * 0.45]);
+    }
+    poly.push([x + side * s * 0.08, y + s * 0.14]);
+    fillPoly(ctx, poly, ink);
+    // Two strokes of sheen along the wing's length.
+    for (const k of [0.45, 0.7]) {
+      stroke(ctx, rng, [[lerp(rx, tip[0], 0.15), lerp(ry, tip[1], 0.15) + s * k * 0.28], [lerp(rx, tip[0], 0.55), lerp(ry, tip[1], 0.55) + s * k * 0.22], [lerp(rx, tip[0], 0.9), lerp(ry, tip[1], 0.9) + s * k * 0.12]], Math.max(1.2, s * 0.07), sheen);
+    }
   }
-  stroke(ctx, rng, [[x + dir * size * 0.5, y - size * 0.05], [x + dir * size * 0.75, y - size * 0.02]], size * 0.2, P.crow[3]);
+  // Body: a plump teardrop, with a fanned tail behind and a small head and beak ahead.
+  const body: Pt[] = [];
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * TAU;
+    body.push([x + Math.cos(a) * s * 0.46, y + Math.sin(a) * s * 0.2]);
+  }
+  fillPoly(ctx, body, ink);
+  fillPoly(ctx, [[x - dir * s * 0.35, y - s * 0.06], [x - dir * s * 0.98, y + s * 0.16], [x - dir * s * 0.9, y - s * 0.02], [x - dir * s * 0.35, y + s * 0.1]], ink);
+  const hx = x + dir * s * 0.5, hy = y - s * 0.07;
+  fillPoly(ctx, Array.from({ length: 10 }, (_, i) => [hx + Math.cos((i / 10) * TAU) * s * 0.16, hy + Math.sin((i / 10) * TAU) * s * 0.15] as Pt), ink);
+  fillPoly(ctx, [[hx + dir * s * 0.1, hy - s * 0.07], [hx + dir * s * 0.4, hy + s * 0.02], [hx + dir * s * 0.1, hy + s * 0.07]], P.crow[2]);
+  stroke(ctx, rng, [[x - dir * s * 0.3, y - s * 0.08], [x, y - s * 0.1], [x + dir * s * 0.3, y - s * 0.1]], Math.max(1.2, s * 0.07), sheen);
 }
 
 function drawGnarled(ctx: Ctx, rng: Rng, t: Tree, season: Season) {

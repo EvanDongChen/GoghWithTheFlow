@@ -887,7 +887,7 @@ export class World {
       this.addStacks(v, r, c, r.int(2, 4), () => r.range(a, b), () => r.range(0.55, 0.85), blocked);
       for (let k = 0, n = r.int(6, 9); k < n; k++) {
         const x = r.range(a, b), y = H * r.range(0.3, 0.55);
-        v.crows.push({ id: hash(this.s, c, 56, k), x, y, size: H * r.range(0.016, 0.024), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.2) });
+        v.crows.push({ id: hash(this.s, c, 56, k), x, y, size: H * r.range(0.021, 0.031), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.2) });
       }
     }
     if (lm === 'cafe') {
@@ -1021,7 +1021,7 @@ export class World {
       this.foregroundPlants(v, r, c, x0, x1, r.int(0, 2), blocked);
       for (let k = 0, n = r.int(5, 11); k < n; k++) {
         const x = anyX(), y = H * r.range(0.12, 0.5);
-        v.crows.push({ id: hash(this.s, c, 54, k), x, y, size: H * r.range(0.016, 0.026), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.4) });
+        v.crows.push({ id: hash(this.s, c, 54, k), x, y, size: H * r.range(0.021, 0.033), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.4) });
       }
     } else {
       // Windmill hills: one or two mills on the ridge, a hamlet and a few haystacks.
