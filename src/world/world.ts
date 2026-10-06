@@ -54,7 +54,12 @@ const CLASSIC = {
 
 export type GlowKind = 'star' | 'moon';
 export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill' | 'sunflower' | 'crows';
-export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk';
+export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk' | 'day' | 'ember' | 'aurora';
+export type Season = 'summer' | 'spring' | 'autumn' | 'winter';
+/** What falls from the sky: rain, snow, blossom petals or autumn leaves. */
+export type Precip = 'rain' | 'snow' | 'petals' | 'leaves';
+/** How restless the sky is: calm skies have fewer eddies and stars, turbulent ones are crowded with them. */
+export type SkyStyle = 'calm' | 'classic' | 'turbulent';
 export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe' | 'sunflowers' | 'crows';
 export type MoonPhase = 'crescent' | 'half' | 'full';
 
@@ -117,26 +122,31 @@ const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mill
 const REGION = 3000;
 const REGION0 = -750;
 const BIOMES: readonly [Biome, number][] = [['village', 0.22], ['wheat', 0.14], ['river', 0.17], ['orchard', 0.12], ['mill', 0.11], ['sunflower', 0.12], ['crows', 0.12]];
-const MOODS: readonly [Mood, number][] = [['classic', 0.28], ['indigo', 0.12], ['teal', 0.1], ['violet', 0.1], ['storm', 0.12], ['dawn', 0.14], ['dusk', 0.14]];
+const MOODS: readonly [Mood, number][] = [['classic', 0.22], ['indigo', 0.09], ['teal', 0.08], ['violet', 0.08], ['storm', 0.1], ['dawn', 0.11], ['dusk', 0.11], ['day', 0.09], ['ember', 0.06], ['aurora', 0.06]];
+const SEASONS: readonly [Season, number][] = [['summer', 0.34], ['spring', 0.22], ['autumn', 0.22], ['winter', 0.22]];
+const SKY_STYLES: readonly [SkyStyle, number][] = [['calm', 0.25], ['classic', 0.45], ['turbulent', 0.3]];
 
 /**
  * How a mood shifts the sky's blues: darken, lighten, then mix toward `to`. Glows keep their gold.
  * Dawn and dusk are the warm twilights; the rest are different nights.
  */
-export interface Grade { to: RGB; t: number; dark: number; lift: number; }
+export interface Grade { to: RGB; t: number; dark: number; lift: number; /** 1 in full daylight, when the stars are out of sight. */ day: number; }
 export const GRADES: Record<Mood, Grade> = {
-  classic: { to: [0, 0, 0], t: 0, dark: 0, lift: 0 },
-  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04, lift: 0 },
-  teal: { to: [36, 128, 138], t: 0.2, dark: 0, lift: 0 },
-  violet: { to: [124, 80, 172], t: 0.22, dark: 0, lift: 0 },
-  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16, lift: 0 },
-  dawn: { to: [238, 156, 142], t: 0.34, dark: 0, lift: 0.05 },
-  dusk: { to: [212, 104, 74], t: 0.32, dark: 0.1, lift: 0 },
+  classic: { to: [0, 0, 0], t: 0, dark: 0, lift: 0, day: 0 },
+  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04, lift: 0, day: 0 },
+  teal: { to: [36, 128, 138], t: 0.2, dark: 0, lift: 0, day: 0 },
+  violet: { to: [124, 80, 172], t: 0.22, dark: 0, lift: 0, day: 0 },
+  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16, lift: 0, day: 0 },
+  dawn: { to: [238, 156, 142], t: 0.34, dark: 0, lift: 0.05, day: 0 },
+  dusk: { to: [212, 104, 74], t: 0.32, dark: 0.1, lift: 0, day: 0 },
+  day: { to: [162, 204, 238], t: 0.6, dark: 0, lift: 0.2, day: 1 },
+  ember: { to: [206, 72, 50], t: 0.4, dark: 0.12, lift: 0, day: 0 },
+  aurora: { to: [44, 176, 132], t: 0.3, dark: 0.08, lift: 0, day: 0 },
 };
 /** The heavy, cold grade over fields of crows, darker than an ordinary stormy night. */
-const CROW_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0 };
+const CROW_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0, day: 0 };
 export const MOOD_NAMES: Record<Mood, string> = {
-  classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk',
+  classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk', day: 'Daylight', ember: 'Ember sky', aurora: 'Aurora night',
 };
 /** The sky changes mood every ZONE units of walking, easing over the middle of each border. */
 const ZONE = 6000;
@@ -145,7 +155,7 @@ const ZONE0 = -1500;
 function mixGrade(a: Grade, b: Grade, t: number): Grade {
   return {
     to: [lerp(a.to[0], b.to[0], t), lerp(a.to[1], b.to[1], t), lerp(a.to[2], b.to[2], t)],
-    t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t),
+    t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t), day: lerp(a.day, b.day, t),
   };
 }
 const LANDMARKS: readonly [Landmark, number][] = [['none', 0.22], ['mill', 0.15], ['river', 0.17], ['haystacks', 0.13], ['cafe', 0.11], ['sunflowers', 0.11], ['crows', 0.11]];
@@ -213,6 +223,8 @@ export class World {
   readonly flipped: boolean;
   mood: Mood;
   readonly landmark: Landmark;
+  readonly season: Season;
+  readonly skyStyle: SkyStyle;
   private majorCache = new Map<number, SkyMajor>();
   private minorCache = new Map<number, Vortex[]>();
   private starCache = new Map<number, Glow[]>();
@@ -232,6 +244,8 @@ export class World {
     this.C = this.flipped ? mirrorClassic() : CLASSIC;
     this.mood = weighted(MOODS, r.random());
     this.landmark = weighted(LANDMARKS, r.random());
+    this.season = weighted(SEASONS, hashFloat(this.s, 961));
+    this.skyStyle = weighted(SKY_STYLES, hashFloat(this.s, 962));
     // Crows come with weather: most nights that feature them are stormy.
     if (this.landmark === 'crows' && r.chance(0.65)) this.mood = 'storm';
     this.moodCache.set(0, this.mood);
@@ -338,6 +352,30 @@ export class World {
       : GRADES[this.moodOf(k)];
     const crows = this.biomeWeight(x, 'crows');
     return crows > 0.01 ? mixGrade(base, CROW_SKY, crows) : base;
+  }
+
+  /** Whether it is bright enough at x that the stars are out of sight. */
+  isDay(x: number): boolean {
+    return this.gradeAt(x).day > 0.55;
+  }
+
+  private glowCache = new Map<number, boolean>();
+
+  /** Stars fade out in daylight; the moon (a sun, by day) is always there. */
+  glowShown(g: Glow): boolean {
+    if (g.kind === 'moon') return true;
+    let v = this.glowCache.get(g.id);
+    if (v === undefined) {
+      v = !this.isDay(g.x);
+      this.glowCache.set(g.id, v);
+    }
+    return v;
+  }
+
+  /** What is falling at x: storms bring rain (snow in winter), and each season has its own drift. */
+  precipAt(x: number): Precip | null {
+    if (this.moodAt(x) === 'storm') return this.season === 'winter' ? 'snow' : 'rain';
+    return this.season === 'winter' ? 'snow' : this.season === 'spring' ? 'petals' : this.season === 'autumn' ? 'leaves' : null;
   }
 
   // ---------------------------------------------------------------- regions
@@ -557,11 +595,12 @@ export class World {
     let v = this.minorCache.get(c);
     if (v) return v;
     v = [];
-    if (c === 0 && hashFloat(this.s, 0, 31) < 0.35) {
+    const eddies = this.skyStyle === 'turbulent' ? 2 + Math.floor(hashFloat(this.s, 0, 35) * 2) : this.skyStyle === 'calm' ? 0 : hashFloat(this.s, 0, 31) < 0.35 ? 1 : 0;
+    if (c === 0 && eddies) {
       // Sometimes a small eddy curls in an empty patch of the classic sky.
       const r = this.rng(c, 2);
       const majors = this.majorsNear(c);
-      for (let tries = 0; tries < 40 && !v.length; tries++) {
+      for (let tries = 0; tries < 40 * eddies && v.length < eddies; tries++) {
         const cand = { x: FRAME_W * r.range(0.05, 0.95), y: H * r.range(0.1, 0.4), R: H * r.range(0.05, 0.07), dir: r.chance(0.5) ? 1 : -1 };
         const clear = majors.every((mj) =>
           (!mj.moon || dist(cand.x, cand.y, mj.moon.x, mj.moon.y) > mj.moon.halo + cand.R * 1.5) &&
@@ -599,7 +638,7 @@ export class World {
     const r = this.rng(c, 3);
     // Each seed leaves out a couple of the eleven stars, so the constellation changes.
     const drop = new Set<number>();
-    const nDrop = Math.floor(hashFloat(this.s, 0, 33) * 3);
+    const nDrop = this.skyStyle === 'turbulent' ? 0 : Math.floor(hashFloat(this.s, 0, 33) * 3) + (this.skyStyle === 'calm' ? 2 : 0);
     for (let k = 0; k < nDrop; k++) drop.add(Math.floor(hashFloat(this.s, 0, 34, k) * this.C.stars.length));
     return this.C.stars
       .map(([x, y, size], i) => ({ x: x * FRAME_W, y: y * H, size, i }))

@@ -18,9 +18,12 @@ const SCALES: Record<Mood, readonly number[]> = {
   storm: [0, 2, 3, 5, 7, 8, 11],     // harmonic minor
   dawn: [0, 2, 4, 5, 7, 9, 11],      // ionian
   dusk: [0, 2, 4, 5, 7, 9, 10],      // mixolydian
+  day: [0, 2, 4, 7, 9, 11, 12],      // major pentatonic, with a high octave
+  ember: [0, 1, 4, 5, 7, 8, 10],     // phrygian dominant
+  aurora: [0, 2, 4, 6, 7, 9, 11],    // lydian
 };
 /** Seconds per beat; the music is slow everywhere, a little brighter at dawn. */
-const BEAT: Record<Mood, number> = { classic: 2.6, indigo: 3, teal: 2.4, violet: 3, storm: 3.4, dawn: 2.2, dusk: 2.8 };
+const BEAT: Record<Mood, number> = { classic: 2.6, indigo: 3, teal: 2.4, violet: 3, storm: 3.4, dawn: 2.2, dusk: 2.8, day: 2, ember: 3, aurora: 3.3 };
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
@@ -44,7 +47,8 @@ export class Music {
   private wind!: GainNode;
   private water!: GainNode;
   private bees!: GainNode;
-  private weights = { wind: 0, water: 0, crickets: 0, village: 0, dawn: 0, crows: 0, sun: 0 };
+  private rain!: GainNode;
+  private weights = { wind: 0, water: 0, crickets: 0, village: 0, dawn: 0, crows: 0, sun: 0, rain: 0 };
 
   // Scheduling state, in audio-context seconds.
   private nextChord = 0;
@@ -97,10 +101,12 @@ export class Music {
     }
     const mood = w.moodAt(x);
     if (mood === 'storm') wind = Math.max(wind, 0.8);
-    this.weights = { wind, water, crickets, village, dawn: mood === 'dawn' ? 1 : 0, crows, sun };
+    this.weights = { wind, water, crickets, village, dawn: mood === 'dawn' || mood === 'day' ? 1 : 0, crows, sun, rain: w.precipAt(x) === 'rain' ? 1 : 0 };
     this.wind.gain.setTargetAtTime(0.05 * wind, t, 1.5);
     this.water.gain.setTargetAtTime(0.06 * water, t, 1.5);
     this.bees.gain.setTargetAtTime(0.5 * sun, t, 1.5);
+    this.rain.gain.setTargetAtTime(0.07 * this.weights.rain, t, 2);
+    if (mood === 'day') this.weights.crickets *= 0.15;
   }
 
   async setEnabled(on: boolean) {
@@ -149,6 +155,7 @@ export class Music {
     this.wind = this.noiseLayer(380, 0.5, 0.11, 0.07);
     this.water = this.noiseLayer(1100, 1.4, 0.35, 0.5, 2300);
     this.bees = this.beeLayer();
+    this.rain = this.noiseLayer(5200, 0.45, 0.15, 0.12, 2600);
   }
 
   /** A looping noise bed through a bandpass whose centre drifts, so it breathes like wind or running water. */

@@ -15,7 +15,7 @@ import { hash, Rng } from '../core/rng';
 import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
 import { drawCrow, houseWindows, millHub } from '../paint/village';
-import { cypressCovers, World, type Crow, type Glow, type Mill } from '../world/world';
+import { cypressCovers, World, type Crow, type Glow, type Mill, type Precip } from '../world/world';
 
 interface Particle {
   x: number; y: number;
@@ -23,6 +23,9 @@ interface Particle {
   trail: number[];
   age: number; life: number; speed: number; w: number; col: RGB;
 }
+
+/** One falling thing (raindrop, snowflake, petal or leaf), placed as fractions of the canvas. */
+interface Flake { u: number; v: number; size: number; ph: number; speed: number; spin: number; tone: number; }
 
 interface Shooter { x: number; y: number; vx: number; vy: number; age: number; life: number; }
 
@@ -77,6 +80,9 @@ export class Life {
   /** 0..1: scales the number of streaming strokes; the app lowers it when frames run long. */
   quality = 1;
   private shooter: Shooter | null = null;
+  private flakes: Flake[] = [];
+  private precip: Precip | null = null;
+  private precipLevel = 0;
   private nextShooter = 6 + Math.random() * 8;
   private warm = glowSprite('255,214,110');
   private white = glowSprite('255,250,225');
@@ -127,7 +133,7 @@ export class Life {
     }
 
     this.nextShooter -= dt;
-    if (!this.shooter && this.nextShooter <= 0) {
+    if (!this.shooter && this.nextShooter <= 0 && !this.world.isDay((x0 + x1) / 2)) {
       const r = this.rng, dir = r.chance(0.5) ? 1 : -1, speed = r.range(700, 1000), a = r.range(0.25, 0.5);
       this.shooter = { x: r.range(x0 + 100, x1 - 100), y: r.range(40, 260), vx: Math.cos(a) * speed * dir, vy: Math.sin(a) * speed, age: 0, life: r.range(0.7, 1.1) };
       this.nextShooter = r.range(12, 26);
@@ -139,6 +145,74 @@ export class Life {
       s.y += s.vy * dt;
       if (s.age > s.life) this.shooter = null;
     }
+    this.updatePrecip(dt, (view.x0 + view.x1) / 2);
+  }
+
+  /** Weather fades out before it changes kind, so rain never turns into snow in a single frame. */
+  private updatePrecip(dt: number, x: number) {
+    const want = this.world.precipAt(x);
+    if (want !== this.precip) {
+      this.precipLevel = Math.max(0, this.precipLevel - dt * 0.8);
+      if (this.precipLevel < 0.03) {
+        this.precip = want;
+        this.flakes = [];
+      }
+    } else if (want) this.precipLevel = Math.min(1, this.precipLevel + dt * 0.5);
+    if (!this.precip) return;
+    if (!this.flakes.length) {
+      const r = this.rng, kind = this.precip;
+      for (let i = 0; i < 320; i++) {
+        this.flakes.push({
+          u: r.random(), v: r.random(), ph: r.range(0, 6.28), tone: r.random(), spin: r.range(-2, 2),
+          size: kind === 'rain' ? r.range(0.7, 1.2) : kind === 'snow' ? r.range(0.6, 1.5) : r.range(0.8, 1.4),
+          // Speeds are fractions of the canvas height per second.
+          speed: kind === 'rain' ? r.range(1.0, 1.5) : kind === 'snow' ? r.range(0.07, 0.16) : r.range(0.06, 0.13),
+        });
+      }
+    }
+    for (const f of this.flakes) {
+      f.v += f.speed * dt;
+      const sway = this.precip === 'rain' ? 0.12 : 0.03 * Math.sin(this.t * 0.9 + f.ph);
+      f.u -= sway * dt * (this.precip === 'rain' ? 1 : 0.6) - (this.precip === 'rain' ? 0 : 0.01 * dt);
+      if (f.v > 1.05) { f.v -= 1.1; f.u = this.rng.random(); }
+      if (f.u < -0.05) f.u += 1.1;
+    }
+  }
+
+  private drawPrecip(ctx: CanvasRenderingContext2D, k: number) {
+    if (!this.precip || this.precipLevel <= 0.01) return;
+    const W = ctx.canvas.width, Hh = ctx.canvas.height, area = clamp((W * Hh) / (1400 * 800), 0.35, 1.6);
+    const n = Math.min(this.flakes.length, Math.round(this.flakes.length * area * this.quality * (this.precip === 'rain' ? 1 : 0.8)));
+    ctx.save();
+    ctx.globalAlpha = this.precipLevel;
+    for (let i = 0; i < n; i++) {
+      const f = this.flakes[i], x = f.u * W, y = f.v * Hh;
+      switch (this.precip) {
+        case 'rain':
+          ctx.strokeStyle = `rgba(206,222,242,${0.3 + 0.4 * f.tone})`;
+          ctx.lineWidth = Math.max(1.2, 2.2 * k * f.size);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + 5 * k, y - (14 + 14 * f.tone) * k * f.size);
+          ctx.stroke();
+          break;
+        case 'snow':
+          ctx.fillStyle = `rgba(240,246,252,${0.55 + 0.4 * f.tone})`;
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1.2, 3 * k * f.size), 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        default: {
+          // Petals and leaves tumble: a small painted ellipse turning as it falls.
+          const leaf = this.precip === 'leaves', a = f.ph + this.t * f.spin, s = Math.max(2, (leaf ? 5.5 : 4) * k * f.size);
+          ctx.fillStyle = leaf ? ['#c8681e', '#e0a030', '#a8441c', '#d88a28'][Math.floor(f.tone * 4)] : ['#fbeef0', '#f0d0dc', '#fff5f2', '#e6b8c4'][Math.floor(f.tone * 4)];
+          ctx.beginPath();
+          ctx.ellipse(x, y, s, s * (0.35 + 0.35 * Math.abs(Math.sin(a * 1.7))), a, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
   }
 
   /** Things in view from every chunk near it, without duplicates. */
@@ -247,7 +321,7 @@ export class Life {
     for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph + this.t * m.speed);
     this.drawCrows(ctx, view, true);
     const seen = new Set<number>(), glows: Glow[] = [];
-    for (const c of chunks) for (const g of this.world.near(c).glows) if (!seen.has(g.id) && g.x > view.x0 - 300 && g.x < view.x1 + 300) { seen.add(g.id); glows.push(g); }
+    for (const c of chunks) for (const g of this.world.near(c).glows) if (!seen.has(g.id) && g.x > view.x0 - 300 && g.x < view.x1 + 300 && this.world.glowShown(g)) { seen.add(g.id); glows.push(g); }
 
     ctx.save();
     ctx.lineCap = 'round';
@@ -361,5 +435,6 @@ export class Life {
       ctx.drawImage(this.white, hx - R, hy - R, R * 2, R * 2);
     }
     ctx.restore();
+    this.drawPrecip(ctx, k);
   }
 }

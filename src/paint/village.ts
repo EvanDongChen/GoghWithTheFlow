@@ -6,8 +6,9 @@ import { fillPoly, stroke, type Ctx, type Pt } from '../core/brush';
 import { darken, jitter, lighten, palette, type RGB } from '../core/color';
 import { lerp, TAU } from '../core/math';
 import { hashFloat, Rng } from '../core/rng';
-import type { Boat, Church, Haystack, House, Lamp, Mill, Tree } from '../world/world';
+import type { Boat, Church, Haystack, House, Lamp, Mill, Season, Tree } from '../world/world';
 import { inPad, L, type ChunkPlan } from './plan';
+import { treeSeason } from './season';
 
 const P = palette({
   wallLight: ['#9fb2c6', '#8ea4bc', '#b4c2c8', '#7d94b0', '#c8cfc8', '#a8b8c0'],
@@ -414,13 +415,13 @@ export function millHub(m: Mill): Pt {
   return [m.x, m.y - m.h * 0.92];
 }
 
-function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
+function drawTree(ctx: Ctx, rng: Rng, t: Tree, season: Season) {
   if (t.kind === 'pine') return drawPine(ctx, rng, t);
   if (t.kind === 'iris') return drawIris(ctx, rng, t);
   if (t.kind === 'sunflower') return drawSunflower(ctx, rng, t);
   const poplar = t.kind === 'poplar', olive = t.kind === 'olive';
   const rx = t.r * (poplar ? 0.55 : olive ? 1.25 : 1), ry = t.r * (poplar ? 2.1 : olive ? 0.65 : 0.9), cy = t.y - ry * 0.8;
-  const dark = olive ? P.treeDark : P.bushDark, mid = olive ? P.treeMid : P.bushMid, light = olive ? P.treeLight : P.bushLight;
+  const { dark, mid, light } = treeSeason(season, t.kind, olive ? { dark: P.treeDark, mid: P.treeMid, light: P.treeLight } : { dark: P.bushDark, mid: P.bushMid, light: P.bushLight });
   fillPoly(ctx, blob(rng, t.x, cy, rx, ry), dark[0]);
   const n = Math.round((rx * ry) / 9);
   for (let i = 0; i < n; i++) {
@@ -449,7 +450,7 @@ export function planVillage(p: ChunkPlan) {
   };
   for (const h of houses) add(h.x, h.w + h.depth + 10, h.y, h.id, (ctx, rng) => drawHouse(ctx, rng, h));
   for (const c of churches) add(c.x, c.bodyW + 20, c.base, c.id, (ctx, rng) => drawChurch(ctx, rng, c));
-  for (const t of trees) add(t.x, t.r * (t.kind === 'sunflower' ? 3.4 : 2.2) + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
+  for (const t of trees) add(t.x, t.r * (t.kind === 'sunflower' ? 3.4 : 2.2) + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t, p.world.season));
   for (const m of mills) add(m.x, m.w + 10, m.y, m.id, (ctx, rng) => drawMill(ctx, rng, m));
   for (const s of stacks) add(s.x, s.w + 10, s.y, s.id, (ctx, rng) => drawStack(ctx, rng, s));
   for (const l of lamps) add(l.x, l.h + 10, l.y, l.id, (ctx, rng) => drawLamp(ctx, rng, l));

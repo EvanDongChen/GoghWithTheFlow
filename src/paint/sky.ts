@@ -89,6 +89,7 @@ export function skyColor(w: World, x: number, y: number, rng: Rng) {
 function colorKey(w: World, x: number, y: number, rng: Rng): Key {
   const near = w.near(World.chunkOf(x));
   for (const g of near.glows) {
+    if (!w.glowShown(g)) continue;
     const r = dist(x, y, g.x, g.y);
     if (r > g.halo * 1.1) continue;
     if (r < g.core) {
@@ -156,7 +157,7 @@ export function planSky(p: ChunkPlan) {
     }
   }
 
-  for (const g of p.near.glows) if (inPad(p, g.x, g.halo + 20)) planGlow(p, g);
+  for (const g of p.near.glows) if (inPad(p, g.x, g.halo + 20) && w.glowShown(g)) planGlow(p, g);
 }
 
 /** Explicit concentric arcs around a star or moon, painted over the field strokes. */
