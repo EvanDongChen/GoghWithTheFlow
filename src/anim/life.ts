@@ -44,9 +44,28 @@ function glowSprite(rgb: string): HTMLCanvasElement {
   return c;
 }
 
-const SAIL_WARM = ['#e6d4a4', '#f0e2b6', '#d2bd8a', '#dccb98'].map(hex);
-const SAIL_COOL = ['#b4c8e0', '#ccdcee', '#98b0d0', '#bfd0e6'].map(hex);
-const SAIL_WOOD = ['#38281c', '#4a3524', '#2c1f16', '#56402a'].map(hex);
+// Muted, a touch darker than the sky behind them, like the tower: sails that belong to the picture rather than sit on it.
+const SAIL_WARM = ['#a89468', '#bba878', '#8c7a54', '#9d8a60'].map(hex);
+const SAIL_COOL = ['#6a7fa2', '#8296b6', '#586c90', '#7389ac'].map(hex);
+const SAIL_WOOD = ['#2a1e16', '#382a1e', '#201710', '#443222'].map(hex);
+
+let grain: HTMLCanvasElement | null = null;
+/** Light and dark speckle with a weave, for texturing painted sprites. */
+function grainTile(): HTMLCanvasElement {
+  if (grain) return grain;
+  const c = grain = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!, img = g.createImageData(64, 64), rng = new Rng(4242);
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const v = (((x >> 1) + (y >> 1)) & 1 ? 0.12 : -0.12) + (rng.random() - 0.5) * 0.7, i = (y * 64 + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0 ? 255 : 0;
+      img.data[i + 3] = Math.min(255, Math.abs(v) * 150);
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
 
 const STAR_ARC: RGB[] = [[251, 241, 184], [246, 223, 110], [236, 235, 176], [220, 230, 220], [255, 248, 216]];
 
@@ -134,48 +153,67 @@ export class Life {
   }
 
   /**
-   * Windmill sails: four latticed blades round a hub, turned to `angle`. They are laid on with the
-   * same impasto brush as the rest of the painting; every stroke is seeded from the mill, so the
-   * wheel is one solid painted object that simply turns.
+   * Windmill sails. A wheel is painted once into a sprite with the same impasto brush and canvas
+   * grain as the chunks, in the muted tones of the tower, then simply turned each frame. Painting
+   * it once (instead of drawing lines every frame) is what lets it sit in the picture.
    */
   private drawSails(ctx: CanvasRenderingContext2D, view: View, m: Mill, angle: number) {
     const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
-    const [hx, hy] = millHub(m), L = m.sail, wBlade = L * 0.22;
-    const cloth = m.warm ? SAIL_WARM : SAIL_COOL;
+    const [hx, hy] = millHub(m), sprite = this.wheel(m, k), half = (m.sail + 8) * k;
     ctx.save();
     ctx.translate(sx(hx), hy * k);
-    ctx.scale(k, k);
+    ctx.rotate(angle);
+    ctx.drawImage(sprite, -half, -half, half * 2, half * 2);
+    ctx.restore();
+  }
+
+  private wheels = new Map<number, { k: number; img: HTMLCanvasElement }>();
+
+  /** The painted wheel for a mill at (roughly) this render scale. */
+  private wheel(m: Mill, k: number): HTMLCanvasElement {
+    const cached = this.wheels.get(m.id);
+    if (cached && Math.abs(cached.k - k) / k < 0.15) return cached.img;
+    const r0 = m.sail + 8, ks = Math.max(k, 0.8) * 1.5, size = Math.ceil(2 * r0 * ks);
+    const img = document.createElement('canvas');
+    img.width = img.height = size;
+    const g = img.getContext('2d')!;
+    g.translate(size / 2, size / 2);
+    g.scale(ks, ks);
+    const L = m.sail, wBlade = L * 0.22, cloth = m.warm ? SAIL_WARM : SAIL_COOL;
     for (let i = 0; i < 4; i++) {
-      ctx.save();
-      ctx.rotate(angle + (i * Math.PI) / 2);
-      const r = new Rng(hash(m.id, i, 77));
-      const rows = 4, rowH = wBlade / rows;
-      // Canvas cloth: broad strokes along the blade, a few to a row, each a slightly different tone.
+      g.save();
+      g.rotate((i * Math.PI) / 2);
+      const r = new Rng(hash(m.id, i, 77)), rows = 4, rowH = wBlade / rows;
+      // Cloth: broad loose strokes along the blade, each a slightly different tone.
       for (let row = 0; row < rows; row++) {
         for (let seg = 0; seg < 3; seg++) {
-          const x0 = L * (0.2 + 0.27 * seg) + r.range(-2, 2), x1 = x0 + L * 0.3;
-          const y = 3 + (row + 0.5) * rowH + r.range(-0.7, 0.7);
-          stroke(ctx, r, [[x0, y], [(x0 + x1) / 2, y + r.range(-1, 1)], [x1, y + r.range(-0.8, 0.8)]], rowH * 1.15, jitter(r.pick(cloth), r, 16));
+          const x0 = L * (0.2 + 0.27 * seg) + r.range(-2.5, 2.5), x1 = x0 + L * 0.3;
+          const y = 3 + (row + 0.5) * rowH + r.range(-1, 1);
+          stroke(g, r, [[x0, y], [(x0 + x1) / 2, y + r.range(-1.2, 1.2)], [x1, y + r.range(-1, 1)]], rowH * 1.25, jitter(r.pick(cloth), r, 22));
         }
       }
-      // The lattice: dark cross-bars and the frame's outer rail, as short thick dabs.
+      // Dark lattice and rails, laid over the cloth like Van Gogh's contours.
       for (let j = 0; j < 5; j++) {
         const x = L * (0.22 + 0.19 * j) + r.range(-1.5, 1.5);
-        stroke(ctx, r, [[x, 2.5], [x + r.range(-1, 1), 3 + wBlade * 0.5], [x, 3.5 + wBlade]], 2.6, jitter(r.pick(SAIL_WOOD), r, 10));
+        stroke(g, r, [[x, 2.5], [x + r.range(-1, 1), 3 + wBlade * 0.5], [x, 3.5 + wBlade]], 2.4, jitter(r.pick(SAIL_WOOD), r, 10));
       }
-      stroke(ctx, r, [[L * 0.2, 3.5 + wBlade], [L * 0.6, 3.5 + wBlade + r.range(-0.6, 0.6)], [L, 3.5 + wBlade]], 3, jitter(r.pick(SAIL_WOOD), r, 10));
-      stroke(ctx, r, [[L * 0.2, 2.2], [L * 0.6, 2.2 + r.range(-0.6, 0.6)], [L, 2.2]], 3, jitter(r.pick(SAIL_WOOD), r, 10));
-      // The spar, thick and dark, with the brush's own highlight along it.
-      stroke(ctx, r, [[2, 0], [L * 0.5, r.range(-0.8, 0.8)], [L, 0]], 4.6, jitter(r.pick(SAIL_WOOD), r, 8));
-      ctx.restore();
+      stroke(g, r, [[L * 0.2, 3.8 + wBlade], [L * 0.6, 3.8 + wBlade + r.range(-0.8, 0.8)], [L, 3.8 + wBlade]], 3.2, jitter(r.pick(SAIL_WOOD), r, 10));
+      stroke(g, r, [[L * 0.2, 2], [L * 0.6, 2 + r.range(-0.8, 0.8)], [L, 2]], 3.2, jitter(r.pick(SAIL_WOOD), r, 10));
+      stroke(g, r, [[2, 0], [L * 0.5, r.range(-0.9, 0.9)], [L, 0]], 4.8, jitter(r.pick(SAIL_WOOD), r, 8));
+      g.restore();
     }
-    // The hub: a dab of dark paint with a lighter cap.
     const hr = new Rng(hash(m.id, 78));
     for (let j = 0; j < 4; j++) {
       const t = (j / 4) * Math.PI * 2;
-      stroke(ctx, hr, [[Math.cos(t) * 2.2, Math.sin(t) * 2.2], [Math.cos(t + 1.6) * 2.2, Math.sin(t + 1.6) * 2.2]], 5.2, jitter(hr.pick(SAIL_WOOD), hr, 8));
+      stroke(g, hr, [[Math.cos(t) * 2.2, Math.sin(t) * 2.2], [Math.cos(t + 1.6) * 2.2, Math.sin(t + 1.6) * 2.2]], 5.4, jitter(hr.pick(SAIL_WOOD), hr, 8));
     }
-    ctx.restore();
+    // Canvas grain over the paint only (source-atop leaves the transparent surround alone).
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = g.createPattern(grainTile(), 'repeat')!;
+    g.fillRect(0, 0, size, size);
+    this.wheels.set(m.id, { k, img });
+    return img;
   }
 
   /** The parts of the scene that live outside the baked chunks; drawn even when the painting is still. */
