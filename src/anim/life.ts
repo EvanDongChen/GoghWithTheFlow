@@ -9,10 +9,10 @@
 //
 // Everything lives in world coordinates, so it works the same in the gallery and while wandering.
 
-import { css, lighten, type RGB } from '../core/color';
+import { css, hex, jitter, lighten, type RGB } from '../core/color';
 import { clamp } from '../core/math';
-import { Rng } from '../core/rng';
-import type { Field } from '../core/brush';
+import { hash, Rng } from '../core/rng';
+import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
 import { houseWindows, millHub } from '../paint/village';
 import { cypressCovers, World, type Glow, type Mill } from '../world/world';
@@ -41,6 +41,29 @@ function glowSprite(rgb: string): HTMLCanvasElement {
   rg.addColorStop(1, `rgba(${rgb},0)`);
   g.fillStyle = rg;
   g.fillRect(0, 0, 128, 128);
+  return c;
+}
+
+// Muted, a touch darker than the sky behind them, like the tower: sails that belong to the picture rather than sit on it.
+const SAIL_WARM = ['#a89468', '#bba878', '#8c7a54', '#9d8a60'].map(hex);
+const SAIL_COOL = ['#6a7fa2', '#8296b6', '#586c90', '#7389ac'].map(hex);
+const SAIL_WOOD = ['#2a1e16', '#382a1e', '#201710', '#443222'].map(hex);
+
+let grain: HTMLCanvasElement | null = null;
+/** Light and dark speckle with a weave, for texturing painted sprites. */
+function grainTile(): HTMLCanvasElement {
+  if (grain) return grain;
+  const c = grain = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!, img = g.createImageData(64, 64), rng = new Rng(4242);
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const v = (((x >> 1) + (y >> 1)) & 1 ? 0.12 : -0.12) + (rng.random() - 0.5) * 0.7, i = (y * 64 + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v > 0 ? 255 : 0;
+      img.data[i + 3] = Math.min(255, Math.abs(v) * 150);
+    }
+  }
+  g.putImageData(img, 0, 0);
   return c;
 }
 
@@ -129,34 +152,68 @@ export class Life {
     return out;
   }
 
-  /** Windmill sails: four latticed blades round a hub, turned to `angle`. */
+  /**
+   * Windmill sails. A wheel is painted once into a sprite with the same impasto brush and canvas
+   * grain as the chunks, in the muted tones of the tower, then simply turned each frame. Painting
+   * it once (instead of drawing lines every frame) is what lets it sit in the picture.
+   */
   private drawSails(ctx: CanvasRenderingContext2D, view: View, m: Mill, angle: number) {
     const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
-    const [hx, hy] = millHub(m), L = m.sail, wBlade = L * 0.2;
+    const [hx, hy] = millHub(m), sprite = this.wheel(m, k), half = (m.sail + 8) * k;
     ctx.save();
     ctx.translate(sx(hx), hy * k);
-    ctx.scale(k, k);
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 4; i++) {
-      ctx.save();
-      ctx.rotate(angle + (i * Math.PI) / 2);
-      // The spar, then the lattice frame of the sail beside it.
-      ctx.strokeStyle = 'rgba(42,30,22,0.95)';
-      ctx.lineWidth = 3.4;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, 0); ctx.stroke();
-      ctx.strokeStyle = m.warm ? 'rgba(214,196,150,0.9)' : 'rgba(178,196,214,0.85)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(L * 0.2, 1, L * 0.8, wBlade);
-      ctx.lineWidth = 1.3;
-      ctx.beginPath();
-      for (let j = 1; j < 6; j++) { const x = L * 0.2 + (L * 0.8 * j) / 6; ctx.moveTo(x, 1); ctx.lineTo(x, 1 + wBlade); }
-      ctx.moveTo(L * 0.2, 1 + wBlade / 2); ctx.lineTo(L, 1 + wBlade / 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.fillStyle = '#2a1e16';
-    ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.rotate(angle);
+    ctx.drawImage(sprite, -half, -half, half * 2, half * 2);
     ctx.restore();
+  }
+
+  private wheels = new Map<number, { k: number; img: HTMLCanvasElement }>();
+
+  /** The painted wheel for a mill at (roughly) this render scale. */
+  private wheel(m: Mill, k: number): HTMLCanvasElement {
+    const cached = this.wheels.get(m.id);
+    if (cached && Math.abs(cached.k - k) / k < 0.15) return cached.img;
+    const r0 = m.sail + 8, ks = Math.max(k, 0.8) * 1.5, size = Math.ceil(2 * r0 * ks);
+    const img = document.createElement('canvas');
+    img.width = img.height = size;
+    const g = img.getContext('2d')!;
+    g.translate(size / 2, size / 2);
+    g.scale(ks, ks);
+    const L = m.sail, wBlade = L * 0.22, cloth = m.warm ? SAIL_WARM : SAIL_COOL;
+    for (let i = 0; i < 4; i++) {
+      g.save();
+      g.rotate((i * Math.PI) / 2);
+      const r = new Rng(hash(m.id, i, 77)), rows = 4, rowH = wBlade / rows;
+      // Cloth: broad loose strokes along the blade, each a slightly different tone.
+      for (let row = 0; row < rows; row++) {
+        for (let seg = 0; seg < 3; seg++) {
+          const x0 = L * (0.2 + 0.27 * seg) + r.range(-2.5, 2.5), x1 = x0 + L * 0.3;
+          const y = 3 + (row + 0.5) * rowH + r.range(-1, 1);
+          stroke(g, r, [[x0, y], [(x0 + x1) / 2, y + r.range(-1.2, 1.2)], [x1, y + r.range(-1, 1)]], rowH * 1.25, jitter(r.pick(cloth), r, 22));
+        }
+      }
+      // Dark lattice and rails, laid over the cloth like Van Gogh's contours.
+      for (let j = 0; j < 5; j++) {
+        const x = L * (0.22 + 0.19 * j) + r.range(-1.5, 1.5);
+        stroke(g, r, [[x, 2.5], [x + r.range(-1, 1), 3 + wBlade * 0.5], [x, 3.5 + wBlade]], 2.4, jitter(r.pick(SAIL_WOOD), r, 10));
+      }
+      stroke(g, r, [[L * 0.2, 3.8 + wBlade], [L * 0.6, 3.8 + wBlade + r.range(-0.8, 0.8)], [L, 3.8 + wBlade]], 3.2, jitter(r.pick(SAIL_WOOD), r, 10));
+      stroke(g, r, [[L * 0.2, 2], [L * 0.6, 2 + r.range(-0.8, 0.8)], [L, 2]], 3.2, jitter(r.pick(SAIL_WOOD), r, 10));
+      stroke(g, r, [[2, 0], [L * 0.5, r.range(-0.9, 0.9)], [L, 0]], 4.8, jitter(r.pick(SAIL_WOOD), r, 8));
+      g.restore();
+    }
+    const hr = new Rng(hash(m.id, 78));
+    for (let j = 0; j < 4; j++) {
+      const t = (j / 4) * Math.PI * 2;
+      stroke(g, hr, [[Math.cos(t) * 2.2, Math.sin(t) * 2.2], [Math.cos(t + 1.6) * 2.2, Math.sin(t + 1.6) * 2.2]], 5.4, jitter(hr.pick(SAIL_WOOD), hr, 8));
+    }
+    // Canvas grain over the paint only (source-atop leaves the transparent surround alone).
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = g.createPattern(grainTile(), 'repeat')!;
+    g.fillRect(0, 0, size, size);
+    this.wheels.set(m.id, { k, img });
+    return img;
   }
 
   /** The parts of the scene that live outside the baked chunks; drawn even when the painting is still. */

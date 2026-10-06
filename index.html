@@ -59,6 +59,8 @@
       <span class="hud-sep" aria-hidden="true"></span>
       <span id="hud-distance" class="hud-value">0.00</span>
       <span class="hud-label">km wandered</span>
+      <span class="hud-sep" aria-hidden="true"></span>
+      <span id="hud-mood" class="hud-value hud-mood"></span>
       <span id="hud-painting" class="hud-painting"><i></i>painting ahead</span>
     </div>
 
@@ -89,10 +91,13 @@
       <button class="icon-btn" id="btn-anim" title="Bring the painting to life (A)" aria-label="Animate the painting" aria-pressed="true">
         <svg viewBox="0 0 24 24"><path d="M12 3.5l1.6 4.3 4.4 1.7-4.4 1.7L12 15.5l-1.6-4.3L6 9.5l4.4-1.7z" /><path d="M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" class="fill" /></svg>
       </button>
+      <button class="icon-btn muted" id="btn-sound" title="Play the soundtrack (M)" aria-label="Play the soundtrack" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" class="wave" /><path d="M16 9.5l5 5M21 9.5l-5 5" class="mute" /></svg>
+      </button>
       <button class="icon-btn" id="btn-share" title="Copy a link to this night (C)" aria-label="Share this night">
         <svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>
       </button>
-      <button class="icon-btn" id="btn-save" title="Save as PNG (S)" aria-label="Save as PNG">
+      <button class="icon-btn" id="btn-save" title="Save a postcard (S) · plain image (Shift+S)" aria-label="Save a postcard">
         <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" /></svg>
       </button>
       <button class="icon-btn" id="btn-full" title="Fullscreen (F)" aria-label="Toggle fullscreen">
@@ -129,7 +134,8 @@
         <dt><kbd>A</kbd></dt><dd>Bring the painting to life</dd>
         <dt><kbd>Space</kbd></dt><dd>Pause or resume drifting</dd>
         <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Walk through the night (or drag, or scroll)</dd>
-        <dt><kbd>S</kbd> <kbd>C</kbd></dt><dd>Save as PNG / copy a link to this night</dd>
+        <dt><kbd>M</kbd></dt><dd>Play or mute the generative soundtrack</dd>
+        <dt><kbd>S</kbd> <kbd>C</kbd></dt><dd>Save a postcard (<kbd>Shift</kbd>+<kbd>S</kbd> for the plain image) / copy a link to this night</dd>
         <dt><kbd>F</kbd></dt><dd>Fullscreen</dd>
       </dl>
       <p class="about-credits">

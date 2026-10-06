@@ -1,9 +1,9 @@
 // The night sky: a flow field of swirls along a wavy ribbon, haloed stars and crescent moons.
 import { trace, type Field, type Pt } from '../core/brush';
-import { css, darken, jitter, mix, palette, type RGB } from '../core/color';
+import { css, darken, hex, jitter, lighten, mix, palette, type RGB } from '../core/color';
 import { clamp, dist, lerp, smoothstep, TAU } from '../core/math';
 import { hash, hashFloat, Rng } from '../core/rng';
-import { H, World, type Glow, type Mood } from '../world/world';
+import { H, World, type Glow, type Grade } from '../world/world';
 import { cellRange, inPad, L, strokeItem, type ChunkPlan } from './plan';
 
 const P = palette({
@@ -20,27 +20,20 @@ const P = palette({
 });
 type Key = keyof typeof P;
 
-// The original stars have small yellow cores in pale, whitish halos; the moon sits in a broad
-// yellow-green glow.
-const MOOD_TINT: Record<Mood, { to: RGB; t: number; dark: number }> = {
-  classic: { to: [0, 0, 0], t: 0, dark: 0 },
-  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04 },
-  teal: { to: [36, 128, 138], t: 0.2, dark: 0 },
-  violet: { to: [124, 80, 172], t: 0.22, dark: 0 },
-  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16 },
-};
 const TINTED = new Set<Key>(['deep', 'mid', 'light', 'pale', 'teal', 'dark']);
 
-/** Shift a blue towards this seed's mood (indigo, teal, violet, storm); glows keep their gold. */
-export function moodTint(mood: Mood, c: RGB): RGB {
-  const m = MOOD_TINT[mood];
-  if (!m.t && !m.dark) return c;
-  return mix(m.dark ? darken(c, m.dark) : c, m.to, m.t);
+/** Shift a blue toward the mood's grade (an indigo night, a rose dawn, a burning dusk); glows keep their gold. */
+export function moodTint(g: Grade, c: RGB): RGB {
+  if (!g.t && !g.dark && !g.lift) return c;
+  let out = c;
+  if (g.dark) out = darken(out, g.dark);
+  if (g.lift) out = lighten(out, g.lift);
+  return mix(out, g.to, g.t);
 }
 
-function paint(w: World, key: Key, rng: Rng, amt: number): RGB {
+function paint(w: World, x: number, key: Key, rng: Rng, amt: number): RGB {
   const c = jitter(rng.pick(P[key]), rng, amt);
-  return TINTED.has(key) ? moodTint(w.mood, c) : c;
+  return TINTED.has(key) ? moodTint(w.gradeAt(x), c) : c;
 }
 
 const STAR_RINGS: Key[] = ['cream', 'yellow', 'cream', 'pale', 'leaf', 'pale', 'cream', 'light', 'pale', 'light', 'light'];
@@ -90,7 +83,7 @@ function inCrescent(m: Glow, x: number, y: number) {
 /** Which palette a sky stroke at (x, y) draws from. */
 /** A sky paint colour at (x, y), as the painting would choose it. Used by the animation layer. */
 export function skyColor(w: World, x: number, y: number, rng: Rng) {
-  return paint(w, colorKey(w, x, y, rng), rng, 22);
+  return paint(w, x, colorKey(w, x, y, rng), rng, 22);
 }
 
 function colorKey(w: World, x: number, y: number, rng: Rng): Key {
@@ -141,10 +134,10 @@ export function planSky(p: ChunkPlan) {
 
   p.items.push({
     layer: L.SKY_BASE, key: 0, op: (ctx) => {
-      const g = ctx.createLinearGradient(0, 0, 0, bottom);
-      g.addColorStop(0, '#16296a');
-      g.addColorStop(0.55, '#2f58a0');
-      g.addColorStop(1, '#6e98cc');
+      const g = ctx.createLinearGradient(0, 0, 0, bottom), grade = w.gradeAt((p.x0 + p.x1) / 2);
+      g.addColorStop(0, css(moodTint(grade, hex('#16296a'))));
+      g.addColorStop(0.55, css(moodTint(grade, hex('#2f58a0'))));
+      g.addColorStop(1, css(moodTint(grade, hex('#6e98cc'))));
       ctx.fillStyle = g;
       ctx.fillRect(p.x0 - p.pad, 0, p.x1 - p.x0 + p.pad * 2, bottom);
     },
@@ -157,7 +150,7 @@ export function planSky(p: ChunkPlan) {
       const seed = hash(w.s, LAYER_SKY, i, j), r = new Rng(seed);
       const px = (i + r.range(-0.5, 0.5)) * SP, py = (j + r.range(-0.5, 0.5)) * SP;
       if (!inPad(p, px)) continue;
-      const col = paint(w, colorKey(w, px, py, r), r, 22);
+      const col = paint(w, px, colorKey(w, px, py, r), r, 22);
       const pts = trace(field, px, py, r.range(18, 32), 5);
       p.items.push(strokeItem(L.SKY, r.random(), seed, pts, r.range(5, 8), col));
     }
@@ -185,7 +178,7 @@ function planGlow(p: ChunkPlan, g: Glow) {
       }
       const key = colorKey(w, pts[2][0], pts[2][1], rng);
       const width = clamp(g.ringW * rng.range(0.75, 1.05), 2.5, 8);
-      p.items.push(strokeItem(L.GLOW, rng.random(), seed, pts, width, paint(w, key, rng, 18)));
+      p.items.push(strokeItem(L.GLOW, rng.random(), seed, pts, width, paint(w, pts[2][0], key, rng, 18)));
     }
   }
 

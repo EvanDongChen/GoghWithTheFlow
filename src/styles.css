@@ -493,3 +493,9 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0s !important; transition-duration: 0.01ms !important; }
 }
+
+/* Sound toggle: show the waves when playing, a cross when muted. */
+#btn-sound .mute { display: none; }
+#btn-sound.muted .wave { display: none; }
+#btn-sound.muted .mute { display: block; }
+.hud-mood { font-style: italic; color: var(--gold); }
