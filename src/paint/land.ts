@@ -5,6 +5,7 @@ import { clamp, lerp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { H, type World } from '../world/world';
 import { cellRange, inPad, L, strokeItem, type ChunkPlan } from './plan';
+import { moodTint } from './sky';
 
 const P = palette({
   back: ['#23447f', '#2d5492', '#3a64a2', '#5079b3', '#1c3a72'],
@@ -14,6 +15,9 @@ const P = palette({
   peak: ['#13235a', '#1a2d6a', '#22377a', '#2c4486', '#3a5596'],
   outline: ['#11234a', '#0f1f40', '#16295a'],
   ground: ['#1b2f4f', '#223a5e', '#2b4a66', '#2a4650', '#1e3548', '#365670', '#28445e'],
+  wheat: ['#5e5432', '#6a5e36', '#766a3e', '#4e4a30', '#82744a', '#585a3c'],
+  wheatLit: ['#9a8650', '#8e7c4a', '#a8925a'],
+  orchard: ['#2e4436', '#38503e', '#2a3e3a', '#44583e', '#24383a'],
   field: ['#3e5a4e', '#4a6450', '#3a5254', '#566a4c'],
 });
 
@@ -45,7 +49,8 @@ export function planLand(p: ChunkPlan) {
   const w = p.world;
   const backPoly = band(p, w.ridgeBack, w.ridgeFront);
   const frontPoly = band(p, w.ridgeFront, w.villageTop);
-  p.items.push({ layer: L.HILL_BASE, key: 0, op: (ctx) => { fillPoly(ctx, backPoly, P.back[1]); fillPoly(ctx, frontPoly, P.front[1]); } });
+  const backBase = moodTint(w.mood, P.back[1]), frontBase = moodTint(w.mood, P.front[1]);
+  p.items.push({ layer: L.HILL_BASE, key: 0, op: (ctx) => { fillPoly(ctx, backPoly, backBase); fillPoly(ctx, frontPoly, frontBase); } });
 
   const field = landField(w), sp = 8;
   const [i0, i1] = cellRange(p, sp);
@@ -60,7 +65,7 @@ export function planLand(p: ChunkPlan) {
       const peak = isBack && r.random() < w.peakness(px) * 0.85;
       const pal = peak ? P.peak : isBack ? (r.chance(0.14) ? P.backHi : P.back) : r.chance(0.1) ? P.frontHi : P.front;
       const pts = trace(field, px, py, r.range(26, 44), 5);
-      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), jitter(r.pick(pal), r, 18)));
+      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), moodTint(w.mood, jitter(r.pick(pal), r, 18))));
     }
   }
 
@@ -97,16 +102,21 @@ function planGround(p: ChunkPlan) {
       const seed = hash(w.s, 7, i, j), r = new Rng(seed);
       const px = (i + r.range(-0.5, 0.5)) * sp, py = (j + r.range(-0.5, 0.5)) * sp;
       if (!inPad(p, px) || py < w.villageTop(px) - 2) continue;
-      const a = 0.9 * w.noise.noise2(px * 0.006 + 30, py * 0.006) + r.range(-0.25, 0.25);
-      const len = r.range(12, 22);
+      // Wheat leans and ripples upward; orchard soil lies in level furrows; the rest swirls gently.
+      const wheat = r.random() < w.wheatWeight(px), orchard = !wheat && r.random() < w.biomeWeight(px, 'orchard');
+      const a = wheat ? -Math.PI / 2 + 0.55 * Math.sin(px * 0.02 + py * 0.01) + r.range(-0.3, 0.3)
+        : orchard ? r.range(-0.12, 0.12)
+        : 0.9 * w.noise.noise2(px * 0.006 + 30, py * 0.006) + r.range(-0.25, 0.25);
+      const len = wheat ? r.range(14, 26) : r.range(12, 22);
       // Large, slow patches of muted fields break up the dark valley floor.
-      const fieldy = w.noise.noise2(px * 0.0015 + 90, py * 0.004) > 0.5 && r.chance(0.5);
+      const fieldy = !wheat && !orchard && w.noise.noise2(px * 0.0015 + 90, py * 0.004) > 0.5 && r.chance(0.5);
       const pts: Pt[] = [
         [px - (Math.cos(a) * len) / 2, py - (Math.sin(a) * len) / 2],
         [px, py + r.range(-1, 1)],
         [px + (Math.cos(a) * len) / 2, py + (Math.sin(a) * len) / 2],
       ];
-      p.items.push(strokeItem(L.GROUND, r.random(), seed, pts, r.range(4, 6.5), jitter(r.pick(fieldy ? P.field : P.ground), r, 16)));
+      const pal = wheat ? (r.chance(0.15) ? P.wheatLit : P.wheat) : orchard ? P.orchard : fieldy ? P.field : P.ground;
+      p.items.push(strokeItem(L.GROUND, r.random(), seed, pts, r.range(4, 6.5), jitter(r.pick(pal), r, 16)));
     }
   }
 }

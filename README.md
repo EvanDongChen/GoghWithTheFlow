@@ -14,9 +14,20 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
   cypress cluster, the rolling great swirl, eleven haloed stars, a crescent moon, mountains that
   climb to a dark peak on the right, olive groves, and a white church spire. Each seed varies the
   details slightly.
-- **Wander**: walk sideways through an infinite night. New swirls, moons, cypresses, villages,
-  poplars and fields keep coming, and each stretch is painted just ahead of you as you travel.
-  It starts on the gallery painting itself.
+- **Wander**: walk sideways through an infinite night, starting from the gallery painting itself.
+  The country changes as you go, through regions borrowed from other Van Gogh paintings:
+  - **villages** with churches (spires, bell towers, domes), thatched cottages, tall townhouses and a glowing café, after *Café Terrace at Night*;
+  - **wheat fields** with haystacks and lone cypresses, after *Wheatfield with Cypresses*;
+  - **a river** lined with gaslights whose reflections shimmer in the water, after *Starry Night Over the Rhône*;
+  - **olive orchards** planted in rows;
+  - **windmill hills**, whose sails turn when the painting is alive.
+
+  Umbrella pines, poplars, irises and boats turn up along the way. Each stretch is painted just ahead of you.
+
+**Every seed is different.** Each one picks a sky mood (classic, indigo, teal, violet or
+stormy), a moon phase (crescent, half or full) and an order of regions. The gallery painting may
+be mirrored, its stars and swirls shift, and it gets a landmark: a windmill on the hills, a
+gaslit river, haystacks, or a lit café.
 
 Turn on **life** (on by default) and the painting moves. Brush strokes stream along the same
 currents that painted the sky, halos of paint circle the stars, the moon breathes, windows
@@ -87,12 +98,13 @@ around each glow, additive light sprites, flickering windows, and shooting stars
 | Path | Role |
 | --- | --- |
 | `src/core/` | Seeded RNG and hashing, Perlin noise, colour helpers, the impasto brush |
-| `src/world/world.ts` | The classic 1889 layout, plus chunked procedural generation of moons, swirls, stars, cypresses, towns, olive trees and peaked terrain |
+| `src/world/world.ts` | The classic layout (mirroring, landmarks, mood, moon phase), regions, river geometry, and chunked generation of every feature |
 | `src/paint/sky.ts` | Flow field from base wave + milky-way ribbon + vortices + star halos; concentric glow rings |
 | `src/paint/land.ts` | Hills that follow ridgelines, valley floor, field patches |
-| `src/paint/village.ts` | Blocky 3/4-view houses built from paint dabs, glowing windows, churches, trees |
+| `src/paint/village.ts` | Houses, cottages, café, churches, trees, irises, haystacks, gaslights, boats and windmills, all built from paint dabs |
+| `src/paint/water.ts` | The river: horizontal strokes, a dark far bank, and gold reflections of the gaslights |
 | `src/paint/cypress.ts` | Flame-shaped cypress with skewed-sine lobes and upward-curling strokes |
 | `src/paint/chunks.ts` | Plans and orders a chunk's strokes; time-sliced painting; canvas weave |
 | `src/paint/worker.ts`, `pool.ts` | Painting workers and the pool that schedules chunks and keeps their images |
-| `src/anim/life.ts` | The animation layer: streaming strokes, shimmering halos, candlelit windows, shooting stars |
+| `src/anim/life.ts` | The animation layer: streaming strokes, shimmering halos, windmill sails, flickering lamps and reflections, shooting stars |
 | `src/main.ts`, `src/styles.css` | Gallery, wander, dock, about panel, input, share, export |

@@ -15,7 +15,7 @@ export type Op = (ctx: Ctx) => void;
 export const L = {
   SKY_BASE: 0, SKY: 1, GLOW: 2, GLOW_CORE: 3,
   HILL_BASE: 4, HILL: 5, RIDGE: 6,
-  GROUND_BASE: 7, GROUND: 8, VILLAGE: 9,
+  GROUND_BASE: 7, GROUND: 8, WATER_BASE: 8.4, WATER: 8.5, VILLAGE: 9,
   CYPRESS_BASE: 10, CYPRESS: 11, CYPRESS_EDGE: 12,
 } as const;
 

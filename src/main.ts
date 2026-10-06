@@ -62,6 +62,8 @@ class App {
     if (params.get('animate') === '0') this.animating = false;
     this.bind();
     this.setSeed(params.get('seed') || randomSeed());
+    // A shared link can point at a spot along the night.
+    if (params.has('x')) this.camX = Number(params.get('x')) || 0;
     this.setMode(params.get('mode') === 'wander' ? 'wander' : 'gallery');
     this.setPlaying(this.playing);
     this.setAnimating(this.animating);
@@ -121,7 +123,7 @@ class App {
     url.searchParams.set('seed', this.world.seed);
     if (this.mode === 'wander') url.searchParams.set('mode', 'wander');
     else url.searchParams.delete('mode');
-    for (const k of ['intro', 'speed', 'animate']) url.searchParams.delete(k);
+    for (const k of ['intro', 'speed', 'animate', 'x']) url.searchParams.delete(k);
     history.replaceState(null, '', url);
   }
 
@@ -194,7 +196,10 @@ class App {
       const img = this.pool.get(c)?.image;
       if (img) g.drawImage(img, c * this.pool.chunkPx, 0);
     }
-    if (this.animating && this.pool.get(0)?.done && this.pool.get(1)?.done) this.life.draw(g, view);
+    if (this.pool.get(0)?.done && this.pool.get(1)?.done) {
+      if (this.animating) this.life.draw(g, view);
+      else this.life.drawStatic(g, view);
+    }
   }
 
   private updateGalleryProgress() {
@@ -223,7 +228,10 @@ class App {
       const x = (c * CW - this.camX) * v, dx = Math.floor(x);
       ctx.drawImage(ch.image, dx, 0, Math.ceil(x + CW * v) - dx + 1, Hh);
     }
-    if (this.animating && allDone) this.life.draw(ctx, view);
+    if (allDone) {
+      if (this.animating) this.life.draw(ctx, view);
+      else this.life.drawStatic(ctx, view);
+    }
   }
 
   private resize() {
@@ -246,6 +254,7 @@ class App {
       const img = this.pool.get(c)?.image;
       if (img) ctx.drawImage(img, Math.round((c * CW - x0) * s), 0);
     }
+    this.life.drawStatic(ctx, { x0, x1: x0 + w, scale: s, offsetX: 0 });
     const name = `starry-night-${this.world.seed}${this.mode === 'wander' ? `-${Math.round(this.camX)}` : ''}.png`;
     out.toBlob((blob) => {
       if (!blob) return;
@@ -260,6 +269,7 @@ class App {
 
   private async share() {
     const url = new URL(location.href);
+    if (this.mode === 'wander') url.searchParams.set('x', String(Math.round(this.camX)));
     const text = `The Starry Night, No. ${pretty(this.world.seed)}`;
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) {
