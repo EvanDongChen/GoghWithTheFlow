@@ -21,7 +21,7 @@ const P = palette({
   orchard: ['#2e4436', '#38503e', '#2a3e3a', '#44583e', '#24383a'],
   field: ['#3e5a4e', '#4a6450', '#3a5254', '#566a4c'],
   sun: ['#4a5a2e', '#5a6a34', '#6c7a3c', '#3e4e2c', '#7a7a40', '#8a7e3a'],
-  crowWheat: ['#7a6a30', '#8a7634', '#96803a', '#6a5a2c', '#a68a40', '#5e5a34'],
+  stormWheat: ['#7a6a30', '#8a7634', '#96803a', '#6a5a2c', '#a68a40', '#5e5a34'],
 });
 
 const slope = (f: (x: number) => number, x: number) => (f(x + 4) - f(x - 4)) / 8;
@@ -107,7 +107,7 @@ function planGround(p: ChunkPlan) {
       if (!inPad(p, px) || py < w.villageTop(px) - 2) continue;
       // Wheat leans and ripples upward; orchard soil lies in level furrows; the rest swirls gently.
       const wheat = r.random() < w.wheatWeight(px), orchard = !wheat && r.random() < w.biomeWeight(px, 'orchard');
-      const sun = !wheat && !orchard && r.random() < w.sunflowerWeight(px), crowed = wheat && r.random() < w.crowsWeight(px);
+      const sun = !wheat && !orchard && r.random() < w.sunflowerWeight(px), stormy = wheat && r.random() < w.stormFieldWeight(px);
       const a = wheat ? -Math.PI / 2 + 0.55 * Math.sin(px * 0.02 + py * 0.01) + r.range(-0.3, 0.3)
         : orchard ? r.range(-0.12, 0.12)
         : 0.9 * w.noise.noise2(px * 0.006 + 30, py * 0.006) + r.range(-0.25, 0.25);
@@ -119,7 +119,7 @@ function planGround(p: ChunkPlan) {
         [px, py + r.range(-1, 1)],
         [px + (Math.cos(a) * len) / 2, py + (Math.sin(a) * len) / 2],
       ];
-      const pal = crowed ? (r.chance(0.12) ? P.wheatLit : P.crowWheat) : wheat ? (r.chance(0.15) ? P.wheatLit : P.wheat) : sun ? P.sun : orchard ? P.orchard : fieldy ? P.field : P.ground;
+      const pal = stormy ? (r.chance(0.12) ? P.wheatLit : P.stormWheat) : wheat ? (r.chance(0.15) ? P.wheatLit : P.wheat) : sun ? P.sun : orchard ? P.orchard : fieldy ? P.field : P.ground;
       p.items.push(strokeItem(L.GROUND, r.random(), seed, pts, r.range(4, 6.5), groundSeason(w.season, jitter(r.pick(pal), r, 16))));
     }
   }

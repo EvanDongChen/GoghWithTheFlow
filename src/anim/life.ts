@@ -14,8 +14,8 @@ import { clamp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
-import { houseWindows, millHub, paintCrow } from '../paint/village';
-import { cypressCovers, World, type Crow, type Glow, type Mill, type Precip } from '../world/world';
+import { houseWindows, millHub } from '../paint/village';
+import { cypressCovers, World, type Glow, type Mill, type Precip } from '../world/world';
 
 interface Particle {
   x: number; y: number;
@@ -77,28 +77,6 @@ function grainTile(): HTMLCanvasElement {
   return c;
 }
 
-/** Crow sprites: one painted pose per flap angle, drawn once and reused so they carry the same paint and grain as the picture. */
-const CROW_FRAMES = 9, CROW_UNIT = 36, CROW_KS = 3;
-const crowSprites: HTMLCanvasElement[] = [];
-function crowSprite(i: number): HTMLCanvasElement {
-  let img = crowSprites[i];
-  if (img) return img;
-  const half = Math.ceil(1.6 * CROW_UNIT * CROW_KS), size = half * 2;
-  img = document.createElement('canvas');
-  img.width = img.height = size;
-  const g = img.getContext('2d')!;
-  g.translate(half, half);
-  g.scale(CROW_KS, CROW_KS);
-  // The same seed for every pose keeps the tones steady as the wings move.
-  paintCrow(g, new Rng(7771), CROW_UNIT, -1 + (2 * i) / (CROW_FRAMES - 1));
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = g.createPattern(grainTile(), 'repeat')!;
-  g.fillRect(0, 0, size, size);
-  crowSprites[i] = img;
-  return img;
-}
-
 function jitterRgb(c: RGB, r: Rng, amt: number): RGB {
   const d = (r.random() - 0.5) * amt;
   return [clamp(c[0] + d, 0, 255), clamp(c[1] + d, 0, 255), clamp(c[2] + d, 0, 255)];
@@ -118,8 +96,6 @@ export class Life {
   sample: ((x: number, y: number) => RGB | null) | null = null;
   private ripples: Ripple[] = [];
   private nextRipple = 0;
-  /** Crows pushed off their circuits by the cursor, drifting back. */
-  private scare = new Map<number, { ox: number; oy: number; vx: number; vy: number }>();
   /** Extra turn and spin given to windmill sails by brushing them. */
   private spin = new Map<number, { ang: number; vel: number }>();
 
@@ -154,7 +130,7 @@ export class Life {
   /** A click: a ring of paint flung outward from (x, y), and the strokes nearby pushed away. */
   burst(x: number, y: number) {
     const r = this.rng;
-    // Crows scatter from a click, and sails nearby get a shove.
+    // Sails nearby get a shove.
     this.startle(x, y, 2.2);
     // On the land a click splashes the paint that is there; on the river it sends out rings.
     if (!this.inSky(x, y)) {
@@ -206,16 +182,8 @@ export class Life {
     return null;
   }
 
-  /** Push crows away from (x, y) and spin any sails there, by `force`. */
+  /** Spin any windmill sails at (x, y), by `force`. */
   private startle(x: number, y: number, force: number) {
-    for (const c of this.crowsNear(x)) {
-      const [cx, cy] = this.crowPos(c, true), dx = cx - x, dy = cy - y, d = Math.hypot(dx, dy) || 1;
-      if (d > 220) continue;
-      const s = this.scare.get(c.id) ?? { ox: 0, oy: 0, vx: 0, vy: 0 };
-      s.vx += (dx / d) * 260 * force * (1 - d / 220);
-      s.vy += (dy / d) * 260 * force * (1 - d / 220) - 60 * force;
-      this.scare.set(c.id, s);
-    }
     for (const m of this.world.near(World.chunkOf(x)).mills) {
       const [hx, hy] = millHub(m);
       if (Math.hypot(x - hx, y - hy) > m.sail * 1.3) continue;
@@ -223,20 +191,6 @@ export class Life {
       s.vel += force * 1.6 * (m.speed >= 0 ? 1 : -1);
       this.spin.set(m.id, s);
     }
-  }
-
-  private crowsNear(x: number): Crow[] {
-    const out: Crow[] = [], seen = new Set<number>();
-    for (let c = World.chunkOf(x) - 1; c <= World.chunkOf(x) + 1; c++) {
-      for (const k of this.world.near(c).crows) if (!seen.has(k.id)) { seen.add(k.id); out.push(k); }
-    }
-    return out;
-  }
-
-  /** Where a crow is on its circuit (plus any scare), and its heading angle. */
-  private crowPos(c: Crow, live: boolean): [number, number, number] {
-    const a = live ? this.t * 0.22 * c.speed + c.ph : c.ph, s = live ? this.scare.get(c.id) : undefined;
-    return [c.x + Math.cos(a) * 150 * c.loop + (s?.ox ?? 0), c.y + Math.sin(a * 1.3) * 34 * c.loop + (s?.oy ?? 0), a];
   }
 
   update(dt: number, view: View) {
@@ -265,14 +219,6 @@ export class Life {
     }
     for (const r of this.ripples) r.age += dt;
     this.ripples = this.ripples.filter((r) => r.age < r.life);
-    for (const [id, s] of this.scare) {
-      // Scared crows coast, slow down, and are drawn back to their circuit.
-      s.vx = (s.vx - s.ox * 0.8 * dt) * Math.exp(-dt * 1.1);
-      s.vy = (s.vy - s.oy * 0.8 * dt) * Math.exp(-dt * 1.1);
-      s.ox += s.vx * dt;
-      s.oy += s.vy * dt;
-      if (Math.abs(s.ox) + Math.abs(s.oy) + Math.abs(s.vx) + Math.abs(s.vy) < 1) this.scare.delete(id);
-    }
     for (const [id, s] of this.spin) {
       s.ang += s.vel * dt;
       s.vel *= Math.exp(-dt * 0.7);
@@ -472,22 +418,6 @@ export class Life {
     return img;
   }
 
-  /** Crows wheel in slow loops over their wheat field, flapping as they go. Stills freeze them mid-flight. */
-  private drawCrows(ctx: CanvasRenderingContext2D, view: View, live: boolean) {
-    const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
-    for (const c of this.inView(view, (n) => n.crows, 400) as Crow[]) {
-      const [cx, cy, a] = this.crowPos(c, live);
-      // Flapping in bursts, with a glide between.
-      const flap = live ? Math.sin(this.t * c.speed * 5 + c.ph) * (0.35 + 0.65 * Math.max(0, Math.sin(this.t * 0.4 + c.ph * 3))) : 0.3;
-      const img = crowSprite(clamp(Math.round(((flap + 1) / 2) * (CROW_FRAMES - 1)), 0, CROW_FRAMES - 1)), f = (c.size / CROW_UNIT) * (k / CROW_KS);
-      ctx.save();
-      ctx.translate(sx(cx), cy * k);
-      ctx.scale(Math.sin(a) > 0 ? -f : f, f);
-      ctx.drawImage(img, -img.width / 2, -img.height / 2);
-      ctx.restore();
-    }
-  }
-
   /** 0..1: how close (x, y) is to the cursor in stir mode. */
   private nearCursor(x: number, y: number, r: number): number {
     if (!this.stir || !this.cur.on) return 0;
@@ -497,7 +427,6 @@ export class Life {
   /** The parts of the scene that live outside the baked chunks; drawn even when the painting is still. */
   drawStatic(ctx: CanvasRenderingContext2D, view: View) {
     for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph);
-    this.drawCrows(ctx, view, false);
   }
 
   draw(ctx: CanvasRenderingContext2D, view: View) {
@@ -505,7 +434,6 @@ export class Life {
     const chunks: number[] = [];
     for (let c = World.chunkOf(view.x0) - 1; c <= World.chunkOf(view.x1) + 1; c++) chunks.push(c);
     for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph + this.t * m.speed + (this.spin.get(m.id)?.ang ?? 0));
-    this.drawCrows(ctx, view, true);
     const seen = new Set<number>(), glows: Glow[] = [];
     for (const c of chunks) for (const g of this.world.near(c).glows) if (!seen.has(g.id) && g.x > view.x0 - 300 && g.x < view.x1 + 300 && this.world.glowShown(g)) { seen.add(g.id); glows.push(g); }
 

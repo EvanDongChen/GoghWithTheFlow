@@ -48,7 +48,7 @@ export class Music {
   private water!: GainNode;
   private bees!: GainNode;
   private rain!: GainNode;
-  private weights = { wind: 0, water: 0, crickets: 0, village: 0, dawn: 0, crows: 0, sun: 0, rain: 0 };
+  private weights = { wind: 0, water: 0, crickets: 0, village: 0, dawn: 0, sun: 0, rain: 0 };
 
   // Scheduling state, in audio-context seconds.
   private nextChord = 0;
@@ -57,7 +57,6 @@ export class Music {
   private nextBell = 0;
   private nextBubble = 0;
   private nextBird = 0;
-  private nextCaw = 0;
   private root = 50;
   private degree = 0;
   private scene: Scene = { x: 0, mode: 'gallery' };
@@ -84,7 +83,7 @@ export class Music {
     if (!this.ctx || !this.world) return;
     const w = this.world, t = this.ctx.currentTime;
     const x = scene.x;
-    let wind = 0, water = 0, crickets = 0, village = 0, crows = 0, sun = 0;
+    let wind = 0, water = 0, crickets = 0, village = 0, sun = 0;
     if (scene.mode === 'gallery') {
       const lm = w.landmark;
       water = lm === 'river' ? 0.9 : 0;
@@ -92,22 +91,19 @@ export class Music {
       wind = lm === 'mill' ? 0.8 : 0.15;
       village = lm === 'cafe' || lm === 'none' ? 1 : 0.4;
       sun = lm === 'sunflowers' ? 1 : 0;
-      crows = lm === 'crows' ? 1 : 0;
-      if (lm === 'crows') wind = 0.7;
       if (lm === 'sunflowers') crickets = 0.5;
     } else {
       const b = (k: Biome) => w.biomeWeight(x, k);
       water = Math.max(w.riverWeight(x), 0);
       crickets = Math.max(b('wheat'), b('orchard') * 0.8, b('mill') * 0.4);
-      wind = Math.max(b('mill'), b('orchard') * 0.5, b('wheat') * 0.4, b('crows'));
+      wind = Math.max(b('mill'), b('orchard') * 0.5, b('wheat') * 0.4, b('stormfield'));
       village = b('village');
-      crows = b('crows');
       sun = b('sunflower');
       crickets = Math.max(crickets, sun * 0.6);
     }
     const mood = w.moodAt(x);
     if (mood === 'storm') wind = Math.max(wind, 0.8);
-    this.weights = { wind, water, crickets, village, dawn: mood === 'dawn' || mood === 'day' ? 1 : 0, crows, sun, rain: w.precipAt(x) === 'rain' ? 1 : 0 };
+    this.weights = { wind, water, crickets, village, dawn: mood === 'dawn' || mood === 'day' ? 1 : 0, sun, rain: w.precipAt(x) === 'rain' ? 1 : 0 };
     this.wind.gain.setTargetAtTime(0.05 * wind, t, 1.5);
     this.water.gain.setTargetAtTime(0.06 * water, t, 1.5);
     this.bees.gain.setTargetAtTime(0.5 * sun, t, 1.5);
@@ -242,7 +238,6 @@ export class Music {
     this.nextBell = t + 6;
     this.nextBubble = t;
     this.nextBird = t + 3;
-    this.nextCaw = t + 4;
   }
 
   // ------------------------------------------------------------ scheduling
@@ -277,10 +272,6 @@ export class Music {
     while (this.nextBubble < horizon) {
       if (k.water > 0.2) this.bubble(this.nextBubble, k.water);
       this.nextBubble += this.rng.range(0.25, 1.1);
-    }
-    while (this.nextCaw < horizon) {
-      if (k.crows > 0.3) this.caw(this.nextCaw);
-      this.nextCaw += this.rng.range(2.5, 8);
     }
     while (this.nextBird < horizon) {
       if (k.dawn > 0.5) this.bird(this.nextBird);
@@ -399,35 +390,6 @@ export class Music {
     pan.connect(this.reverb);
     o.start(t);
     o.stop(t + 0.2);
-  }
-
-  /** A crow's caw: a rough, falling call, two or three in a row. */
-  private caw(t: number) {
-    const ctx = this.ctx!, n = this.rng.int(1, 3), base = this.rng.range(420, 620);
-    const pan = ctx.createStereoPanner();
-    pan.pan.value = this.rng.range(-0.9, 0.9);
-    pan.connect(this.master);
-    pan.connect(this.reverb);
-    for (let i = 0; i < n; i++) {
-      const s = t + i * 0.34, o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain();
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 1100;
-      bp.Q.value = 1.2;
-      for (const [osc, mult] of [[o, 1], [o2, 1.51]] as const) {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(base * mult * 1.15, s);
-        osc.frequency.exponentialRampToValueAtTime(base * mult * 0.8, s + 0.24);
-      }
-      g.gain.setValueAtTime(0, s);
-      g.gain.linearRampToValueAtTime(0.02, s + 0.03);
-      g.gain.setValueAtTime(0.02, s + 0.14);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.3);
-      o.connect(bp);
-      o2.connect(bp);
-      bp.connect(g).connect(pan);
-      for (const osc of [o, o2]) { osc.start(s); osc.stop(s + 0.34); }
-    }
   }
 
   /** A small bird at dawn: two quick glides. */
