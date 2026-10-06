@@ -4,7 +4,7 @@
 // point always sees the same features no matter which chunk is being painted.
 //
 // The first painting frame, x in [0, FRAME_W), follows the composition of the 1889 original
-// (see CLASSIC below). Each seed varies it: it may be mirrored, gets its own sky mood and moon
+// (see CLASSIC below). Each seed varies it: it may be mirrored, its moon may leave the corner, it gets its own sky mood and moon
 // phase, and one landmark (a windmill, a river, haystacks or a lit café). Terrain blends
 // smoothly from that layout into fully procedural country on either side.
 //
@@ -138,6 +138,8 @@ const SKY_BRUSHES: readonly [SkyBrush, number][] = [['fine', 0.28], ['classic', 
 const FORM_SPIRALS: Record<SkyForm, number> = { classic: 0.5, waves: 0.08, great: 0.55, triple: 0.5, diagonal: 0.25, cloudy: 0.35 };
 const FOREGROUNDS: readonly [Foreground, number][] = [['cypress', 0.64], ['none', 0.18], ['pine', 0.06], ['poplars', 0.06], ['gnarled', 0.06]];
 const SKY_STYLES: readonly [SkyStyle, number][] = [['calm', 0.25], ['classic', 0.45], ['turbulent', 0.3]];
+/** Chance that the gallery moon hangs in its corner, as in the original; otherwise it finds its own patch of sky. */
+const CORNER_MOON = 0.3;
 
 /**
  * How a mood shifts the sky's blues: darken, lighten, then mix toward `to`. Glows keep their gold.
@@ -236,6 +238,8 @@ export class World {
   /** Mirrors a classic-frame fraction when the layout is flipped. */
   private readonly fx: (x: number) => number;
   readonly flipped: boolean;
+  /** Whether the gallery moon sits in the original's corner (top right, or top left when mirrored). */
+  readonly cornerMoon: boolean;
   mood: Mood;
   readonly landmark: Landmark;
   readonly season: Season;
@@ -270,6 +274,8 @@ export class World {
     this.skyBrush = weighted(SKY_BRUSHES, hashFloat(this.s, 966));
     this.skySlant = hashFloat(this.s, 967) < 0.5 ? 1 : -1;
     this.foreground = weighted(FOREGROUNDS, hashFloat(this.s, 968));
+    this.cornerMoon = hashFloat(this.s, 969) < CORNER_MOON;
+    if (!this.cornerMoon) this.C = { ...this.C, moon: this.moonSpot() };
     this.moodCache.set(0, this.mood);
     this.classic = {
       band: new Sampled(this.C.band, j(1, 0.03)),
@@ -520,7 +526,7 @@ export class World {
     const x0 = c * CW;
     m = { vortices: [] };
     const jx = () => r.range(-0.015, 0.015) * FRAME_W, jy = () => r.range(-0.012, 0.012) * H;
-    const C = this.C, moonChunk = World.chunkOf(C.moon.x * FRAME_W), cypressChunk = 1 - moonChunk;
+    const C = this.C, moonChunk = World.chunkOf(C.moon.x * FRAME_W), cypressChunk = World.chunkOf(this.fx(0.25) * FRAME_W);
 
     if (c === moonChunk) {
       const core = H * C.moon.core * r.range(0.9, 1.1);
@@ -593,6 +599,26 @@ export class World {
     }
     const dx = r.range(-0.03, 0.03), stretch = r.range(0.85, 1.15);
     return tongues.map(([x, top, w, lean], i) => [x + dx, i ? clamp(top * stretch, 0.01, 0.74) : top, w, lean] as const);
+  }
+
+  /**
+   * Somewhere in the frame's upper sky for a moon that has left its corner, as frame fractions.
+   * It keeps clear of the frame's swirls and, with a cypress in the foreground, of the tree's side.
+   */
+  private moonSpot(): ClassicLayout['moon'] {
+    const r = this.rng(-998, 62), fx = this.fx, core = r.range(0.05, 0.065);
+    const swirls = this.skyForm === 'cloudy' ? [] : this.frameSwirls(r);
+    const lo = this.foreground === 'cypress' ? 0.5 : 0.1;
+    let best = { x: fx(0.6), y: 0.12, core }, bestGap = -Infinity;
+    for (let tries = 0; tries < 30; tries++) {
+      const x = fx(r.range(lo, 0.78)), y = r.range(0.08, 0.24);
+      // Clearance in units of frame height, so x is scaled by the frame's aspect.
+      const gap = Math.min(Infinity, ...swirls.map((sw) =>
+        Math.hypot((x - sw.x) * (FRAME_W / H), y - sw.y) - sw.R * 0.75 - core * 1.6));
+      if (gap > bestGap) { best = { x, y, core }; bestGap = gap; }
+      if (gap > 0) break;
+    }
+    return best;
   }
 
   /** The swirls of the classic frame, as frame fractions, for this seed's sky form. */
@@ -693,9 +719,12 @@ export class World {
     const drop = new Set<number>();
     const nDrop = this.skyStyle === 'turbulent' ? 0 : Math.floor(hashFloat(this.s, 0, 33) * 3) + (this.skyStyle === 'calm' ? 2 : 0);
     for (let k = 0; k < nDrop; k++) drop.add(Math.floor(hashFloat(this.s, 0, 34, k) * this.C.stars.length));
+    // A moon out of its corner pushes aside any of the original's stars in its way.
+    const moon = this.C.moon, clear = (x: number, y: number, size: number) => this.cornerMoon ||
+      dist(x, y, moon.x * FRAME_W, moon.y * H) > H * (moon.core * 2.3 + 0.0115 * size * 3.2) + 12;
     return this.C.stars
       .map(([x, y, size], i) => ({ x: x * FRAME_W, y: y * H, size, i }))
-      .filter((st) => World.chunkOf(st.x) === c && !drop.has(st.i))
+      .filter((st) => World.chunkOf(st.x) === c && !drop.has(st.i) && clear(st.x, st.y, st.size))
       .map(({ x, y, size, i }) => {
         const core = H * 0.0115 * size * r.range(0.82, 1.18);
         return {
