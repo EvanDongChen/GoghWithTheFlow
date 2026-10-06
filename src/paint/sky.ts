@@ -39,7 +39,8 @@ function paint(w: World, x: number, key: Key, rng: Rng, amt: number): RGB {
 const STAR_RINGS: Key[] = ['cream', 'yellow', 'cream', 'pale', 'leaf', 'pale', 'cream', 'light', 'pale', 'light', 'light'];
 const MOON_RINGS: Key[] = ['leaf', 'cream', 'leaf', 'leaf', 'cream', 'leaf', 'pale', 'leaf', 'pale', 'light'];
 
-const SP = 8.5;
+/** Spacing between stroke seeds, and the stroke length and width scale, for each brush style. */
+const BRUSH = { fine: { sp: 7, len: 0.72, wid: 0.72 }, classic: { sp: 8.5, len: 1, wid: 1 }, bold: { sp: 10.5, len: 1.4, wid: 1.3 } } as const;
 /** Swirls are squashed vertically, so they read as rolling waves rather than targets. */
 const SQUASH = 1.4;
 const LAYER_SKY = 1;
@@ -50,6 +51,10 @@ export function skyField(w: World): Field {
     const n = w.noise.noise2(x * 0.003, y * 0.003);
     let vx = 1;
     let vy = 0.3 * Math.sin(x * 0.0045 + y * 0.003 + n * 2.2) + 0.35 * n;
+    // The sky's composition: waves roll in long swells, diagonal skies stream across the frame, cloudy ones churn.
+    if (w.skyForm === 'waves') vy = 0.75 * Math.sin(x * 0.0032 + 0.9 * Math.sin(y * 0.004) + n * 0.8) + 0.2 * n;
+    else if (w.skyForm === 'diagonal') vy = 0.7 * w.skySlant + 0.25 * Math.sin(x * 0.004 + y * 0.002 + n * 2) + 0.25 * n;
+    else if (w.skyForm === 'cloudy') vy = 0.5 * Math.sin(x * 0.009 + y * 0.006 + n * 3.2) + 0.45 * n;
 
     const by = w.bandY(x), d = (y - by) / w.bandWidth;
     const slope = (w.bandY(x + 4) - w.bandY(x - 4)) / 8;
@@ -145,6 +150,7 @@ export function planSky(p: ChunkPlan) {
   });
 
   const field = skyField(w);
+  const B = BRUSH[w.skyBrush], SP = B.sp;
   const [i0, i1] = cellRange(p, SP);
   for (let i = i0; i <= i1; i++) {
     for (let j = -1; j * SP < bottom; j++) {
@@ -152,8 +158,8 @@ export function planSky(p: ChunkPlan) {
       const px = (i + r.range(-0.5, 0.5)) * SP, py = (j + r.range(-0.5, 0.5)) * SP;
       if (!inPad(p, px)) continue;
       const col = paint(w, px, colorKey(w, px, py, r), r, 22);
-      const pts = trace(field, px, py, r.range(18, 32), 5);
-      p.items.push(strokeItem(L.SKY, r.random(), seed, pts, r.range(5, 8), col));
+      const pts = trace(field, px, py, r.range(18, 32) * B.len, 5);
+      p.items.push(strokeItem(L.SKY, r.random(), seed, pts, r.range(5, 8) * B.wid, col));
     }
   }
 

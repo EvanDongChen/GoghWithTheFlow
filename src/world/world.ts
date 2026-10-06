@@ -60,6 +60,14 @@ export type Season = 'summer' | 'spring' | 'autumn' | 'winter';
 export type Precip = 'rain' | 'snow' | 'petals' | 'leaves';
 /** How restless the sky is: calm skies have fewer eddies and stars, turbulent ones are crowded with them. */
 export type SkyStyle = 'calm' | 'classic' | 'turbulent';
+/**
+ * The composition of the sky: how its flow is organised, not just how it is coloured.
+ * classic: two swirls like the original; waves: long rolling swells and no spirals; great: one huge spiral;
+ * triple: three spirals of different sizes; diagonal: a sky streaming down across the frame; cloudy: many small whorls.
+ */
+export type SkyForm = 'classic' | 'waves' | 'great' | 'triple' | 'diagonal' | 'cloudy';
+/** How the sky is painted: fine short dabs, the usual strokes, or bold long ribbons. */
+export type SkyBrush = 'fine' | 'classic' | 'bold';
 export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe' | 'sunflowers' | 'crows';
 export type MoonPhase = 'crescent' | 'half' | 'full';
 
@@ -124,6 +132,10 @@ const REGION0 = -750;
 const BIOMES: readonly [Biome, number][] = [['village', 0.22], ['wheat', 0.14], ['river', 0.17], ['orchard', 0.12], ['mill', 0.11], ['sunflower', 0.12], ['crows', 0.12]];
 const MOODS: readonly [Mood, number][] = [['classic', 0.22], ['indigo', 0.09], ['teal', 0.08], ['violet', 0.08], ['storm', 0.1], ['dawn', 0.11], ['dusk', 0.11], ['day', 0.09], ['ember', 0.06], ['aurora', 0.06]];
 const SEASONS: readonly [Season, number][] = [['summer', 0.34], ['spring', 0.22], ['autumn', 0.22], ['winter', 0.22]];
+const SKY_FORMS: readonly [SkyForm, number][] = [['classic', 0.22], ['waves', 0.15], ['great', 0.16], ['triple', 0.16], ['diagonal', 0.15], ['cloudy', 0.16]];
+const SKY_BRUSHES: readonly [SkyBrush, number][] = [['fine', 0.28], ['classic', 0.44], ['bold', 0.28]];
+/** Chance that a chunk beyond the frame holds a big spiral, by sky form. */
+const FORM_SPIRALS: Record<SkyForm, number> = { classic: 0.5, waves: 0.08, great: 0.55, triple: 0.5, diagonal: 0.25, cloudy: 0.35 };
 const SKY_STYLES: readonly [SkyStyle, number][] = [['calm', 0.25], ['classic', 0.45], ['turbulent', 0.3]];
 
 /**
@@ -227,6 +239,10 @@ export class World {
   readonly landmark: Landmark;
   readonly season: Season;
   readonly skyStyle: SkyStyle;
+  readonly skyForm: SkyForm;
+  readonly skyBrush: SkyBrush;
+  /** Which way a diagonal sky streams (1 or -1). */
+  readonly skySlant: number;
   private majorCache = new Map<number, SkyMajor>();
   private minorCache = new Map<number, Vortex[]>();
   private starCache = new Map<number, Glow[]>();
@@ -248,6 +264,9 @@ export class World {
     this.landmark = weighted(LANDMARKS, r.random());
     this.season = weighted(SEASONS, hashFloat(this.s, 961));
     this.skyStyle = weighted(SKY_STYLES, hashFloat(this.s, 962));
+    this.skyForm = weighted(SKY_FORMS, hashFloat(this.s, 965));
+    this.skyBrush = weighted(SKY_BRUSHES, hashFloat(this.s, 966));
+    this.skySlant = hashFloat(this.s, 967) < 0.5 ? 1 : -1;
     // Crows come with weather: most nights that feature them are stormy.
     if (this.landmark === 'crows' && r.chance(0.65)) this.mood = 'storm';
     this.moodCache.set(0, this.mood);
@@ -513,9 +532,9 @@ export class World {
 
     if (c === 0) {
       // The great swirl wanders a little further from seed to seed than the rest of the layout.
-      for (const sw of C.swirls) m.vortices.push({ x: sw.x * FRAME_W + jx() * 2.5, y: sw.y * H + jy() * 2.5, R: sw.R * H * r.range(0.88, 1.12), dir: sw.dir });
-    } else if (c !== 1 && c !== -1 && this.sparse(c, 13, 0.5)) {
-      const cx = x0 + CW * r.range(0.3, 0.7), cy = H * r.range(0.26, 0.36), R = H * r.range(0.13, 0.17);
+      for (const sw of this.frameSwirls(r)) m.vortices.push({ x: sw.x * FRAME_W + jx() * 2.5, y: sw.y * H + jy() * 2.5, R: sw.R * H * r.range(0.88, 1.12), dir: sw.dir });
+    } else if (c !== 1 && c !== -1 && this.sparse(c, 13, FORM_SPIRALS[this.skyForm])) {
+      const cx = x0 + CW * r.range(0.3, 0.7), cy = H * r.range(0.26, 0.36), R = H * r.range(0.13, 0.17) * (this.skyForm === 'great' ? 1.5 : this.skyForm === 'cloudy' ? 0.6 : 1);
       const dir = r.chance(0.5) ? 1 : -1, side = r.chance(0.5) ? 1 : -1;
       // A big spiral with a smaller counter-rotating one tucked below and to the side.
       m.vortices.push({ x: cx, y: cy, R, dir });
@@ -577,6 +596,32 @@ export class World {
     return tongues.map(([x, top, w, lean], i) => [x + dx, i ? clamp(top * stretch, 0.01, 0.74) : top, w, lean] as const);
   }
 
+  /** The swirls of the classic frame, as frame fractions, for this seed's sky form. */
+  private frameSwirls(r: Rng): { x: number; y: number; R: number; dir: number }[] {
+    const fx = this.fx, [a, b] = this.C.swirls;
+    switch (this.skyForm) {
+      case 'waves': return [];
+      case 'great': return [{ x: fx(0.55), y: 0.36, R: 0.3, dir: a.dir }];
+      case 'triple': return [a, b, { x: fx(0.32), y: 0.2, R: 0.085, dir: -a.dir }];
+      case 'diagonal': return [{ ...a, R: a.R * 0.7 }];
+      case 'cloudy': {
+        const out: { x: number; y: number; R: number; dir: number }[] = [];
+        for (let i = 0; i < 6; i++) {
+          // Scatter small whorls over the open sky, clear of the moon.
+          for (let tries = 0; tries < 20; tries++) {
+            const x = fx(r.range(0.1, 0.95)), y = r.range(0.12, 0.5), R = r.range(0.055, 0.09);
+            if (Math.hypot((x - this.C.moon.x) * 1.25, y - this.C.moon.y) < 0.2) continue;
+            if (out.some((o) => Math.hypot((x - o.x) * 1.25, y - o.y) < (R + o.R) * 1.2)) continue;
+            out.push({ x, y, R, dir: i % 2 ? 1 : -1 });
+            break;
+          }
+        }
+        return out;
+      }
+      default: return this.C.swirls;
+    }
+  }
+
   private makeMoon(c: number, x: number, y: number, core: number, r: Rng): Glow {
     const phase: MoonPhase = r.random() < 0.6 ? 'crescent' : r.chance(0.45) ? 'half' : 'full';
     // The lit side faces away from the cutout; mirrored layouts light the other side.
@@ -621,7 +666,7 @@ export class World {
     if (!this.isClassic(c)) {
       const r = this.rng(c, 2);
       const majors = this.majorsNear(c);
-      const n = r.int(0, 2);
+      const n = this.skyForm === 'waves' ? 0 : this.skyForm === 'cloudy' ? r.int(2, 4) : r.int(0, 2);
       for (let tries = 0; v.length < n && tries < 60; tries++) {
         const cand = { x: c * CW + CW * r.range(0.1, 0.9), y: H * r.range(0.08, 0.45), R: H * r.range(0.05, 0.075), dir: r.chance(0.5) ? 1 : -1 };
         const clear = majors.every((m) =>
