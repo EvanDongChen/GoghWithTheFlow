@@ -18,26 +18,43 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
   poplars and fields keep coming, and each stretch is painted just ahead of you as you travel.
   It starts on the gallery painting itself.
 
-Every seed is its own night, and the same seed always paints the same world.
+Turn on **life** (on by default) and the painting moves. Brush strokes stream along the same
+currents that painted the sky, halos of paint circle the stars, the moon breathes, windows
+flicker like candlelight, and every so often a shooting star crosses the night.
+
+Every seed is its own night, and the same seed always paints the same world. Share a link and
+your friend sees exactly your night.
 
 ## Run it
 
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # static site in dist/, deployable anywhere (e.g. GitHub Pages)
+npm run build    # dist/index.html: one self-contained file (~100 KB)
 ```
+
+The build is a single HTML file with everything inlined, so you can send it to someone and they
+can just double-click it. No server needed.
+
+### Publish on GitHub Pages
+
+The repo includes `.github/workflows/deploy.yml`. Do this once: in the GitHub repo go to **Settings → Pages →
+Source: GitHub Actions**. After that, every push to `main` publishes the site to
+`https://evandongchen.github.io/GoghWithTheFlow/`. Link previews use `public/og.jpg`.
 
 | Input | Action |
 | --- | --- |
 | `G` / `W` | Gallery / Wander |
 | `N` | A new night |
+| `A` | Bring the painting to life / still it |
+| `C` | Copy a link to this night |
+| `I` | About |
 | `Space` | Pause or resume drifting |
 | `←` `→`, drag, scroll | Walk through the night |
 | `S` | Save the current view as PNG |
 | `F` | Fullscreen |
 
-URL parameters: `?seed=arles`, `&mode=wander`, `&speed=0..160`, `&intro=0`.
+URL parameters: `?seed=arles`, `&mode=wander`, `&speed=0..160`, `&animate=0`, `&intro=0`.
 
 ## How it works
 
@@ -55,9 +72,17 @@ are pinned to the classic layout, so the gallery painting is also where the wand
 from its global grid cell and given a global sort key. So when two chunks both draw a stroke that
 crosses their shared edge, they draw it identically and in the same order, and no seam shows.
 
-**Painted progressively.** A chunk is planned as an ordered list of draw ops, then executed a few
-milliseconds per frame. Visible chunks go first, then the road ahead, which is why you can watch
-it being painted.
+**Painted off the main thread.** Two web workers plan each chunk as an ordered list of draw ops
+and rasterise it into a CPU-backed `OffscreenCanvas`, in short slices. They send partial bitmaps
+along the way, which is why you can watch the painting form. Visible chunks go first, then the
+road ahead. The page only blits finished images, so scrolling stays smooth. (Keeping the
+workers' canvases on the CPU matters: thousands of strokes queued on the GPU would stall the
+page's own frames.) Browsers without OffscreenCanvas fall back to painting in small
+main-thread slices.
+
+**A living layer.** `src/anim/life.ts` redraws over the finished painting every frame:
+particles advected through the sky's flow field and drawn as fading brush trails, rotating arcs
+around each glow, additive light sprites, flickering windows, and shooting stars.
 
 | Path | Role |
 | --- | --- |
@@ -67,5 +92,7 @@ it being painted.
 | `src/paint/land.ts` | Hills that follow ridgelines, valley floor, field patches |
 | `src/paint/village.ts` | Blocky 3/4-view houses built from paint dabs, glowing windows, churches, trees |
 | `src/paint/cypress.ts` | Flame-shaped cypress with skewed-sine lobes and upward-curling strokes |
-| `src/paint/chunks.ts` | Plans, orders and progressively paints chunks; canvas weave; eviction |
-| `src/main.ts`, `src/styles.css` | Gallery, wander, dock, input, export |
+| `src/paint/chunks.ts` | Plans and orders a chunk's strokes; time-sliced painting; canvas weave |
+| `src/paint/worker.ts`, `pool.ts` | Painting workers and the pool that schedules chunks and keeps their images |
+| `src/anim/life.ts` | The animation layer: streaming strokes, shimmering halos, candlelit windows, shooting stars |
+| `src/main.ts`, `src/styles.css` | Gallery, wander, dock, about panel, input, share, export |
