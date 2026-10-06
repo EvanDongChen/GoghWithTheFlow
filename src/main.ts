@@ -17,6 +17,15 @@ function randomSeed(): string {
   return `${pick(ADJ)}-${pick(NOUN)}-${1 + Math.floor(Math.random() * 999)}`;
 }
 
+/** A seed whose gallery moon hangs in the top right corner, as in the original. */
+function classicSeed(): string {
+  for (let i = 0; i < 40; i++) {
+    const seed = randomSeed(), w = new World(seed);
+    if (w.cornerMoon && !w.flipped) return seed;
+  }
+  return randomSeed();
+}
+
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Phones and tablets: paint at a lower resolution and keep the page's frame budget for scrolling. */
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -85,7 +94,7 @@ class App {
     this.speedInput.value = String(this.speed);
     if (params.get('animate') === '0') this.animating = false;
     this.bind();
-    this.setSeed(params.get('seed') || randomSeed());
+    this.setSeed(params.get('seed') || (this.firstVisit() ? classicSeed() : randomSeed()));
     // A shared link can point at a spot along the night.
     if (params.has('x')) this.camX = Number(params.get('x')) || 0;
     this.setMode(params.get('mode') === 'wander' ? 'wander' : 'gallery');
@@ -99,6 +108,15 @@ class App {
   }
 
   // ------------------------------------------------------------ state
+
+  /** True the first time this browser opens the site; the first night keeps the original's moon. */
+  private firstVisit(): boolean {
+    try {
+      if (localStorage.getItem('gogh-visited')) return false;
+      localStorage.setItem('gogh-visited', '1');
+    } catch { /* private mode */ }
+    return true;
+  }
 
   private setSeed(seed: string) {
     this.pool?.dispose();
