@@ -44,6 +44,7 @@ your friend sees exactly your night.
 - **Sky and time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn, dusk, daylight, ember or aurora), and the sky drifts into a different one every few screens as you wander. In daylight the stars go out and the moon becomes a sun. Skies also differ in composition (the original two swirls, rolling waves, one great spiral, three spirals, a diagonal stream or a churn of small whorls), in temperament (calm, classic or turbulent) and in brushwork (fine dabs, the usual strokes or bold ribbons). The current mood and season show in the HUD.
 - **Seasons and weather**: every night is in summer, spring (almond blossom and drifting petals), autumn (rust-coloured trees and falling leaves) or winter (snow on the ground and falling snow). Weather is rare: only about one stretch in six has anything falling, and it is rain, snow, petals or leaves to suit the season.
 - **Postcards** (`S`): a dialog lets you pick a design (classic, museum, airmail or polaroid) and write a message in handwriting, with a live preview. The card carries the painting, its title and number, sky, season, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
+- **Stir the sky** (`B`, optional): your cursor drags the streaming brushstrokes into eddies and leaves a trail of fresh paint, stars flare as you pass, and a click flings a ring of paint (with a note, if the soundtrack is on). On a phone, drag across the painting.
 - **Foreground**: the near side of the gallery painting is a cypress about two nights in three (in one of several shapes). The rest have an open village, umbrella pines, a row of poplars or a gnarled old olive.
 
 ## On phones
@@ -76,6 +77,7 @@ Source: GitHub Actions**. After that, every push to `main` publishes the site to
 | `I` | About |
 | `Space` | Pause or resume drifting |
 | `←` `→`, drag, scroll | Walk through the night |
+| `B` | Stir the sky with your cursor (click for a burst of paint) |
 | `M` | Play / mute the soundtrack |
 | `S` | Save a postcard (`Shift+S`: plain PNG) |
 | `F` | Fullscreen |

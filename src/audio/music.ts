@@ -64,6 +64,12 @@ export class Music {
 
   get on() { return this.enabled; }
 
+  /** A single bright note, for a click in stir mode. */
+  sparkle() {
+    if (!this.ctx || !this.enabled || !this.world) return;
+    this.pluck(this.ctx.currentTime + 0.01, SCALES[this.world.moodAt(this.scene.x)]);
+  }
+
   /** Start (or reseed) the music for this world. Safe to call before audio is allowed. */
   setWorld(world: World) {
     this.world = world;

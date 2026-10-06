@@ -22,6 +22,8 @@ interface Particle {
   /** Recent positions, oldest first, as flat x,y pairs. */
   trail: number[];
   age: number; life: number; speed: number; w: number; col: RGB;
+  /** Extra velocity from being stirred, which fades away. */
+  ex: number; ey: number;
 }
 
 /** One falling thing (raindrop, snowflake, petal or leaf), placed as fractions of the canvas. */
@@ -99,6 +101,41 @@ export class Life {
   private ps: Particle[] = [];
   private rng = new Rng((Math.random() * 2 ** 32) >>> 0);
   private t = 0;
+  /** Stir mode: the cursor drags the streaming strokes, trails paint behind it and makes the stars flare. */
+  stir = false;
+  private cur = { x: 0, y: 0, vx: 0, vy: 0, on: false };
+
+  /** Where the cursor is, in world units, and how fast it is moving (world units per second). */
+  pointer(x: number, y: number, vx: number, vy: number) {
+    const c = this.cur;
+    c.vx += (vx - c.vx) * 0.4;
+    c.vy += (vy - c.vy) * 0.4;
+    c.x = x;
+    c.y = y;
+    c.on = true;
+  }
+
+  pointerOut() {
+    this.cur.on = false;
+    this.cur.vx = this.cur.vy = 0;
+  }
+
+  /** A click: a ring of paint flung outward from (x, y), and the strokes nearby pushed away. */
+  burst(x: number, y: number) {
+    const r = this.rng;
+    for (const p of this.ps) {
+      const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy) || 1, f = Math.exp(-(d * d) / (160 * 160));
+      p.ex += (dx / d) * 260 * f;
+      p.ey += (dy / d) * 260 * f;
+    }
+    for (let i = 0, n = 26; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r.range(-0.1, 0.1), sp = r.range(170, 280);
+      const px = x + Math.cos(a) * 6, py = y + Math.sin(a) * 6;
+      const col = lighten(skyColor(this.world, px, py, r), r.range(0.3, 0.55));
+      this.ps.push({ x: px, y: py, trail: [px, py], age: 0, life: r.range(1.3, 2.3), speed: r.range(15, 35), w: r.range(4, 6.5), col, ex: Math.cos(a) * sp, ey: Math.sin(a) * sp });
+    }
+  }
+
   /** 0..1: scales the number of streaming strokes; the app lowers it when frames run long. */
   quality = 1;
   private shooter: Shooter | null = null;
@@ -125,7 +162,7 @@ export class Life {
       const x = r.range(x0, x1), y = r.range(0, this.world.ridgeBack(x));
       if (!this.inSky(x, y)) continue;
       const col = lighten(skyColor(this.world, x, y, r), r.range(0.15, 0.35));
-      return { x, y, trail: [x, y], age: 0, life: r.range(2.5, 6), speed: r.range(30, 70), w: r.range(3.5, 6), col };
+      return { x, y, trail: [x, y], age: 0, life: r.range(2.5, 6), speed: r.range(30, 70), w: r.range(3.5, 6), col, ex: 0, ey: 0 };
     }
     return null;
   }
@@ -142,11 +179,37 @@ export class Life {
       if (p) this.ps.push(p);
     }
 
+    // Stirring: a trail of fresh paint behind a moving cursor.
+    const c = this.cur, stirring = this.stir && c.on, cspeed = Math.hypot(c.vx, c.vy);
+    // The pull on nearby strokes is capped, so a flick of the mouse swirls them rather than flinging them away.
+    const pull = cspeed > 700 ? 700 / cspeed : 1;
+    if (stirring && cspeed > 60 && this.ps.length < target * 1.8) {
+      const r = this.rng;
+      for (let i = 0, n = Math.min(3, 1 + Math.floor(cspeed / 400)); i < n; i++) {
+        const x = c.x + r.range(-10, 10), y = c.y + r.range(-10, 10);
+        if (!this.inSky(x, y)) continue;
+        const col = lighten(skyColor(this.world, x, y, r), r.range(0.45, 0.7));
+        this.ps.push({ x, y, trail: [x, y], age: 0, life: r.range(1.6, 2.8), speed: r.range(20, 40), w: r.range(6, 9), col, ex: c.vx * 0.08, ey: c.vy * 0.08 });
+      }
+    }
+
+    const R2 = 130 * 130, damp = Math.exp(-dt * 1.6);
     for (const p of this.ps) {
       p.age += dt;
+      if (stirring) {
+        // Strokes near the cursor are dragged along with it and curl around it into a little eddy.
+        const dx = p.x - c.x, dy = p.y - c.y, d2 = dx * dx + dy * dy;
+        if (d2 < R2 * 4) {
+          const f = Math.exp(-d2 / R2), d = Math.sqrt(d2) || 1;
+          p.ex += (c.vx * pull * 1.6 * f + (-dy / d) * 110 * f) * dt;
+          p.ey += (c.vy * pull * 1.6 * f + (dx / d) * 110 * f) * dt;
+        }
+      }
+      p.ex *= damp;
+      p.ey *= damp;
       const v = this.field(p.x, p.y);
-      p.x += v[0] * p.speed * dt;
-      p.y += v[1] * p.speed * dt;
+      p.x += (v[0] * p.speed + p.ex) * dt;
+      p.y += (v[1] * p.speed + p.ey) * dt;
       const lx = p.trail[p.trail.length - 2], ly = p.trail[p.trail.length - 1];
       if (Math.hypot(p.x - lx, p.y - ly) >= TRAIL_STEP) {
         p.trail.push(p.x, p.y);
@@ -398,8 +461,10 @@ export class Life {
       if (this.world.near(World.chunkOf(g.x)).cypresses.some((c) => cypressCovers(c, this.world.noise, g.x, g.y, 0))) continue;
       const moon = g.kind === 'moon', ph = g.id % 97;
       const pulse = 0.5 + 0.5 * Math.sin(this.t * (moon ? 0.8 : 1.6 + (ph % 7) * 0.15) + ph);
-      const R = (moon ? g.core * 2.4 : g.core * 2.6) * (0.9 + 0.2 * pulse) * k;
-      ctx.globalAlpha = (moon ? 0.16 : 0.2) + (moon ? 0.1 : 0.22) * pulse;
+      // Stars flare as the cursor passes near them.
+      const near = this.stir && this.cur.on ? Math.exp(-((g.x - this.cur.x) ** 2 + (g.y - this.cur.y) ** 2) / (g.halo * g.halo * 4)) : 0;
+      const R = (moon ? g.core * 2.4 : g.core * 2.6) * (0.9 + 0.2 * pulse) * (1 + 0.45 * near) * k;
+      ctx.globalAlpha = Math.min(1, ((moon ? 0.16 : 0.2) + (moon ? 0.1 : 0.22) * pulse) * (1 + 1.6 * near));
       ctx.drawImage(moon ? this.warm : this.white, sx(g.x) - R, g.y * k - R, R * 2, R * 2);
     }
 
