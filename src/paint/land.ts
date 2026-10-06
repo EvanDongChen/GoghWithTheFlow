@@ -49,7 +49,7 @@ export function planLand(p: ChunkPlan) {
   const w = p.world;
   const backPoly = band(p, w.ridgeBack, w.ridgeFront);
   const frontPoly = band(p, w.ridgeFront, w.villageTop);
-  const backBase = moodTint(w.mood, P.back[1]), frontBase = moodTint(w.mood, P.front[1]);
+  const grade = w.gradeAt((p.x0 + p.x1) / 2), backBase = moodTint(grade, P.back[1]), frontBase = moodTint(grade, P.front[1]);
   p.items.push({ layer: L.HILL_BASE, key: 0, op: (ctx) => { fillPoly(ctx, backPoly, backBase); fillPoly(ctx, frontPoly, frontBase); } });
 
   const field = landField(w), sp = 8;
@@ -65,7 +65,7 @@ export function planLand(p: ChunkPlan) {
       const peak = isBack && r.random() < w.peakness(px) * 0.85;
       const pal = peak ? P.peak : isBack ? (r.chance(0.14) ? P.backHi : P.back) : r.chance(0.1) ? P.frontHi : P.front;
       const pts = trace(field, px, py, r.range(26, 44), 5);
-      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), moodTint(w.mood, jitter(r.pick(pal), r, 18))));
+      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), moodTint(w.gradeAt(px), jitter(r.pick(pal), r, 18))));
     }
   }
 

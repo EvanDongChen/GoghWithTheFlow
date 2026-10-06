@@ -15,6 +15,7 @@
 import { Noise } from '../core/noise';
 import { hash, hashFloat, hashString, Rng } from '../core/rng';
 import { clamp, dist, lerp, smoothstep } from '../core/math';
+import type { RGB } from '../core/color';
 
 export const H = 1200;
 export const CW = 750;
@@ -53,7 +54,7 @@ const CLASSIC = {
 
 export type GlowKind = 'star' | 'moon';
 export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill';
-export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm';
+export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk';
 export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe';
 export type MoonPhase = 'crescent' | 'half' | 'full';
 
@@ -114,7 +115,35 @@ const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mill
 const REGION = 3000;
 const REGION0 = -750;
 const BIOMES: readonly [Biome, number][] = [['village', 0.28], ['wheat', 0.2], ['river', 0.2], ['orchard', 0.16], ['mill', 0.16]];
-const MOODS: readonly [Mood, number][] = [['classic', 0.42], ['indigo', 0.16], ['teal', 0.13], ['violet', 0.12], ['storm', 0.17]];
+const MOODS: readonly [Mood, number][] = [['classic', 0.28], ['indigo', 0.12], ['teal', 0.1], ['violet', 0.1], ['storm', 0.12], ['dawn', 0.14], ['dusk', 0.14]];
+
+/**
+ * How a mood shifts the sky's blues: darken, lighten, then mix toward `to`. Glows keep their gold.
+ * Dawn and dusk are the warm twilights; the rest are different nights.
+ */
+export interface Grade { to: RGB; t: number; dark: number; lift: number; }
+export const GRADES: Record<Mood, Grade> = {
+  classic: { to: [0, 0, 0], t: 0, dark: 0, lift: 0 },
+  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04, lift: 0 },
+  teal: { to: [36, 128, 138], t: 0.2, dark: 0, lift: 0 },
+  violet: { to: [124, 80, 172], t: 0.22, dark: 0, lift: 0 },
+  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16, lift: 0 },
+  dawn: { to: [238, 156, 142], t: 0.34, dark: 0, lift: 0.05 },
+  dusk: { to: [212, 104, 74], t: 0.32, dark: 0.1, lift: 0 },
+};
+export const MOOD_NAMES: Record<Mood, string> = {
+  classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk',
+};
+/** The sky changes mood every ZONE units of walking, easing over the middle of each border. */
+const ZONE = 6000;
+const ZONE0 = -1500;
+
+function mixGrade(a: Grade, b: Grade, t: number): Grade {
+  return {
+    to: [lerp(a.to[0], b.to[0], t), lerp(a.to[1], b.to[1], t), lerp(a.to[2], b.to[2], t)],
+    t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t),
+  };
+}
 const LANDMARKS: readonly [Landmark, number][] = [['none', 0.3], ['mill', 0.2], ['river', 0.2], ['haystacks', 0.17], ['cafe', 0.13]];
 
 function weighted<T>(table: readonly [T, number][], u: number): T {
@@ -198,6 +227,7 @@ export class World {
     this.fx = this.flipped ? (x) => 1 - x : (x) => x;
     this.C = this.flipped ? mirrorClassic() : CLASSIC;
     this.mood = weighted(MOODS, r.random());
+    this.moodCache.set(0, this.mood);
     this.landmark = weighted(LANDMARKS, r.random());
     this.classic = {
       band: new Sampled(this.C.band, j(1, 0.03)),
@@ -259,6 +289,46 @@ export class World {
   /** How much a hill point sits on a high peak (0..1); peaks are painted darker. */
   peakness(x: number): number {
     return smoothstep(0.05, 0.13, (this.horizon - this.ridgeBack(x)) / H);
+  }
+
+  // ---------------------------------------------------------------- sky mood
+
+  private moodCache = new Map<number, Mood>();
+
+  /** Mood of zone k. Zone 0 holds the classic frame and has the seed's own mood; the others are drawn by lot. */
+  moodOf(k: number): Mood {
+    const cached = this.moodCache.get(k);
+    if (cached) return cached;
+    const step = k > 0 ? 1 : -1;
+    let j = k - step;
+    while (!this.moodCache.has(j)) j -= step;
+    for (j += step; ; j += step) {
+      const prev = this.moodCache.get(j - step)!;
+      let m = weighted(MOODS, hashFloat(this.s, j, 951));
+      for (let t = 0; m === prev && t < 8; t++) m = weighted(MOODS, hashFloat(this.s, j, 952 + t));
+      this.moodCache.set(j, m);
+      if (j === k) return m;
+    }
+  }
+
+  private zoneAt(x: number): { k: number; u: number } {
+    const f = (x - ZONE0) / ZONE;
+    const k = Math.floor(f);
+    return { k, u: f - k };
+  }
+
+  /** The mood that dominates at x. */
+  moodAt(x: number): Mood {
+    const { k, u } = this.zoneAt(x);
+    return this.moodOf(u < 0.05 ? k - 1 : u > 0.95 ? k + 1 : k);
+  }
+
+  /** The sky grade at x: a smooth blend between neighbouring moods, so dusk drifts into night as you walk. */
+  gradeAt(x: number): Grade {
+    const { k, u } = this.zoneAt(x);
+    if (u < 0.2) return mixGrade(GRADES[this.moodOf(k - 1)], GRADES[this.moodOf(k)], smoothstep(-0.2, 0.2, u));
+    if (u > 0.8) return mixGrade(GRADES[this.moodOf(k)], GRADES[this.moodOf(k + 1)], smoothstep(0.8, 1.2, u));
+    return GRADES[this.moodOf(k)];
   }
 
   // ---------------------------------------------------------------- regions
@@ -385,7 +455,7 @@ export class World {
     if (c === cypressChunk) {
       m.cypress = {
         id: hash(this.s, c, 15), x: this.fx(0.25) * FRAME_W,
-        tongues: C.cypress.map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy() * 2, w * FRAME_W * r.range(0.92, 1.08), lean, i)),
+        tongues: this.cypressVariant().map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy() * 2, w * FRAME_W * r.range(0.92, 1.08), lean, i)),
       };
     } else if (!this.isClassic(c) && c !== -1 && c !== 2 && this.sparse(c, 14, 0.34)) {
       const x = x0 + CW * r.range(0.15, 0.85), tall = r.chance(0.6);
@@ -401,6 +471,40 @@ export class World {
     }
     this.majorCache.set(c, m);
     return m;
+  }
+
+  /**
+   * The foreground tree on the near side of the frame. Each seed picks one of several silhouettes
+   * (x, top, width, lean as frame fractions; the first entry is the low dark mass at the foot) and
+   * nudges every flame, so the tree stops being the same one from night to night. Mirrored
+   * layouts flip the whole thing.
+   */
+  private cypressVariant(): (readonly [number, number, number, number])[] {
+    type T = readonly [number, number, number, number];
+    const r = this.rng(-998, 61), u = r.random(), fx = this.fx, flip = this.flipped ? -1 : 1;
+    // x positions of the base mass and flames, as written, are for the unflipped layout.
+    const variants: Record<string, T[]> = {
+      twin: [[0.27, 0.7, 0.28, 0], [0.2, 0.08, 0.11, -0.12], [0.32, 0.22, 0.1, 0.16]],
+      spire: [[0.27, 0.72, 0.2, 0], [0.26, 0.02, 0.09, 0.04], [0.35, 0.52, 0.07, 0.3]],
+      sprawl: [[0.25, 0.66, 0.38, 0], [0.15, 0.34, 0.1, -0.2], [0.26, 0.26, 0.11, 0], [0.36, 0.4, 0.1, 0.25], [0.43, 0.62, 0.09, 0.4]],
+      leaning: [[0.3, 0.74, 0.28, 0.1], [0.23, 0.1, 0.14, 0.5], [0.13, 0.42, 0.08, -0.3]],
+      steps: [[0.27, 0.72, 0.34, 0], [0.17, 0.42, 0.09, -0.1], [0.27, 0.12, 0.12, 0], [0.37, 0.32, 0.09, 0.2]],
+      grove: [[0.25, 0.72, 0.42, 0], [0.12, 0.3, 0.09, -0.15], [0.39, 0.08, 0.1, 0.12]],
+    };
+    let tongues: T[];
+    if (u < 0.22) {
+      // The original cluster, but with its flames re-rolled a little more boldly than the rest of the layout.
+      // (CLASSIC is already mirrored for flipped layouts.)
+      tongues = this.C.cypress.map(([x, top, w, lean], i) => i === 0 ? [x, top, w, lean] as const
+        : [x, clamp(top + r.range(-0.06, 0.1), 0.02, 0.7), w * r.range(0.8, 1.25), lean * r.range(0.5, 1.4)] as const);
+      if (r.chance(0.35)) tongues.splice(r.int(2, tongues.length - 1), 1);
+    } else {
+      const names = Object.keys(variants);
+      tongues = variants[names[Math.min(names.length - 1, Math.floor(((u - 0.22) / 0.78) * names.length))]]
+        .map(([x, top, w, lean]) => [fx(x), top, w, lean * flip] as const);
+    }
+    const dx = r.range(-0.03, 0.03), stretch = r.range(0.85, 1.15);
+    return tongues.map(([x, top, w, lean], i) => [x + dx, i ? clamp(top * stretch, 0.01, 0.74) : top, w, lean] as const);
   }
 
   private makeMoon(c: number, x: number, y: number, core: number, r: Rng): Glow {
