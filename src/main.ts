@@ -18,6 +18,8 @@ function randomSeed(): string {
 }
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Phones and tablets: paint at a lower resolution and keep the page's frame budget for scrolling. */
+const coarse = matchMedia('(pointer: coarse)').matches;
 const pretty = (seed: string) => seed.replace(/-/g, ' ');
 
 const REGION_NAMES: Record<Biome, string> = {
@@ -63,10 +65,12 @@ class App {
   private toastTimer = 0;
   private dirty = true;
   private lastScene = 0;
+  private slowFor = 0;
+  private smooth = 1 / 60;
 
   constructor() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
-    this.renderScale = clamp((innerHeight * dpr) / H, 0.75, 1.5);
+    this.renderScale = clamp((innerHeight * dpr) / H, 0.75, coarse ? 1 : 1.5);
 
     const params = new URLSearchParams(location.search);
     if (params.get('intro') === '0') $('intro').remove();
@@ -182,6 +186,14 @@ class App {
     const dt = Math.min(0.05, (t - (this.lastFrame || t)) / 1000);
     this.lastFrame = t;
 
+    // If frames keep taking too long, thin out the animation layer instead of letting the page stutter.
+    this.smooth += (dt - this.smooth) * 0.05;
+    this.slowFor = this.smooth > 0.034 ? this.slowFor + dt : 0;
+    if (this.slowFor > 2.5) {
+      this.life.quality = Math.max(0.3, this.life.quality * 0.7);
+      this.slowFor = 0;
+    }
+
     if (this.mode === 'wander' && !this.dragging) {
       const before = this.camX;
       this.camX += ((this.playing ? this.speed : 0) + this.vel) * dt;
@@ -273,7 +285,7 @@ class App {
 
   private resize() {
     // Wander redraws the whole screen every frame, so keep its backing store modest on dense displays.
-    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    const dpr = Math.min(devicePixelRatio || 1, coarse ? 1.25 : 1.5);
     this.wanderCanvas.width = Math.round(innerWidth * dpr);
     this.wanderCanvas.height = Math.round(innerHeight * dpr);
     this.dirty = true;
@@ -299,8 +311,20 @@ class App {
   }
 
   private download(canvas: HTMLCanvasElement, name: string) {
-    canvas.toBlob((blob) => {
+    canvas.toBlob(async (blob) => {
       if (!blob) return;
+      // Phones often ignore blob downloads; hand the picture to the share sheet (Save Image, Messages...) instead.
+      if (coarse) {
+        const file = new File([blob], name, { type: 'image/png' });
+        try {
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Gogh with the Flow' });
+            return;
+          }
+        } catch (e) {
+          if ((e as DOMException).name === 'AbortError') return;
+        }
+      }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = name;
@@ -408,6 +432,17 @@ class App {
       if (!this.about.hidden && !this.about.contains(e.target as Node)) this.toggleAbout(false);
     });
     addEventListener('resize', () => this.resize());
+
+    // A swipe across the gallery steps into the painting and keeps walking.
+    const gallery = document.querySelector<HTMLElement>('.gallery')!;
+    let sx = 0, sy = 0, st = 0;
+    gallery.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; st = performance.now(); });
+    gallery.addEventListener('pointerup', (e) => {
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (this.mode !== 'gallery' || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      this.setMode('wander');
+      this.vel = clamp((-dx / Math.max(0.12, (performance.now() - st) / 1000)) * 0.6, -1500, 1500);
+    });
 
     const c = this.wanderCanvas;
     c.addEventListener('pointerdown', (e) => {

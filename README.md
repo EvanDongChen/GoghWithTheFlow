@@ -20,7 +20,9 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
   - **wheat fields** with haystacks and lone cypresses, after *Wheatfield with Cypresses*;
   - **a river** lined with gaslights whose reflections shimmer in the water, after *Starry Night Over the Rhône*;
   - **olive orchards** planted in rows;
-  - **windmill hills**, whose sails turn when the painting is alive.
+  - **windmill hills**, whose sails turn when the painting is alive;
+  - **sunflower fields**, after the *Sunflowers* series, where bees drone among the heads;
+  - **wheat under a storm**, after *Wheatfield with Crows*, with a heavy sky and crows circling and calling.
 
   Umbrella pines, poplars, irises and boats turn up along the way. Each stretch is painted just ahead of you.
 
@@ -42,6 +44,10 @@ your friend sees exactly your night.
 - **Time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn or dusk), and the sky drifts into a different one every few screens as you wander. The current mood shows in the HUD.
 - **Postcards** (`S`): saving renders a postcard with the painting, its title and number, sky, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
 - **Foreground tree**: each seed picks a different silhouette for the big cypress on the near side of the gallery painting.
+
+## On phones
+
+Swipe across the gallery to step into the painting, then drag to walk. Phones paint at a lower resolution with one worker, and the animation thins out by itself if frames run long. Saving a postcard opens the share sheet.
 
 ## Run it
 

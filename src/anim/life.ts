@@ -74,6 +74,8 @@ export class Life {
   private ps: Particle[] = [];
   private rng = new Rng((Math.random() * 2 ** 32) >>> 0);
   private t = 0;
+  /** 0..1: scales the number of streaming strokes; the app lowers it when frames run long. */
+  quality = 1;
   private shooter: Shooter | null = null;
   private nextShooter = 6 + Math.random() * 8;
   private warm = glowSprite('255,214,110');
@@ -103,7 +105,7 @@ export class Life {
   update(dt: number, view: View) {
     this.t += dt;
     const margin = 60, x0 = view.x0 - margin, x1 = view.x1 + margin;
-    const target = Math.round(clamp((x1 - x0) * 0.65, 150, 1500));
+    const target = Math.round(clamp((x1 - x0) * 0.65, 150, 1500) * this.quality);
 
     // Retire particles that aged out, left the sky or scrolled away; then top back up.
     this.ps = this.ps.filter((p) => p.age < p.life && p.x > x0 - 40 && p.x < x1 + 40 && this.inSky(p.x, p.y));

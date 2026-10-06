@@ -67,6 +67,7 @@ button, input { font: inherit; color: inherit; }
 /* ------------------------------------------------------------ gallery */
 
 .gallery {
+  touch-action: pan-y;
   position: absolute;
   inset: 0;
   display: flex;
@@ -485,9 +486,14 @@ kbd {
   .seed-field span { display: none; }
   .seed-field input { width: 7ch; }
   [data-mode='wander'] .seed-field { display: none; }
-  #btn-save, #btn-full { display: none; }
+  #btn-full { display: none; }
   .about { padding: 22px 20px 18px; }
   .about h3 { font-size: 26px; }
+}
+
+@media (max-width: 480px) {
+  /* Room for the save button: the seed can still be changed with the dice. */
+  .seed-field { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
