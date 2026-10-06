@@ -29,7 +29,7 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
 **Every seed is different.** Each one picks a sky mood (classic, indigo, teal, violet or
 stormy), a moon phase (crescent, half or full) and an order of regions. The gallery painting may
 be mirrored, its stars and swirls shift, and it gets a landmark: a windmill on the hills, a
-gaslit river, haystacks, or a lit café.
+gaslit river, haystacks, a lit café, sunflowers in the foreground, or crows circling over the wheat (usually under a storm).
 
 Turn on **life** (on by default) and the painting moves. Brush strokes stream along the same
 currents that painted the sky, halos of paint circle the stars, the moon breathes, windows

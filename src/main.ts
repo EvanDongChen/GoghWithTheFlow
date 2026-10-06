@@ -26,7 +26,7 @@ const REGION_NAMES: Record<Biome, string> = {
   village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills', sunflower: 'A field of sunflowers', crows: 'Wheat under a stormy sky, with crows',
 };
 const LANDMARK_NAMES: Record<Landmark, string> = {
-  none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace',
+  none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace', sunflowers: 'Sunflowers in the foreground', crows: 'Crows over the wheat',
 };
 const MOON_NAMES = { crescent: 'Crescent moon', half: 'Half moon', full: 'Full moon' };
 

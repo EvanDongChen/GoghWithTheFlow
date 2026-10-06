@@ -81,6 +81,10 @@ export class Music {
       crickets = lm === 'haystacks' ? 1 : lm === 'none' ? 0.3 : 0;
       wind = lm === 'mill' ? 0.8 : 0.15;
       village = lm === 'cafe' || lm === 'none' ? 1 : 0.4;
+      sun = lm === 'sunflowers' ? 1 : 0;
+      crows = lm === 'crows' ? 1 : 0;
+      if (lm === 'crows') wind = 0.7;
+      if (lm === 'sunflowers') crickets = 0.5;
     } else {
       const b = (k: Biome) => w.biomeWeight(x, k);
       water = Math.max(w.riverWeight(x), 0);
