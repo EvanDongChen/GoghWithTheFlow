@@ -4,8 +4,13 @@
 // point always sees the same features no matter which chunk is being painted.
 //
 // The first painting frame, x in [0, FRAME_W), follows the composition of the 1889 original
-// (see CLASSIC below) with small seeded variations. Terrain blends smoothly from that layout
-// into fully procedural hills on either side.
+// (see CLASSIC below). Each seed varies it: it may be mirrored, gets its own sky mood and moon
+// phase, and one landmark (a windmill, a river, haystacks or a lit café). Terrain blends
+// smoothly from that layout into fully procedural country on either side.
+//
+// Beyond the frame the world is a sequence of regions, each with its own character, borrowed
+// from other paintings of Van Gogh's: villages, wheat fields with haystacks, a river lined with
+// gaslights, olive orchards in rows, and windmill hills.
 
 import { Noise } from '../core/noise';
 import { hash, hashFloat, hashString, Rng } from '../core/rng';
@@ -47,6 +52,10 @@ const CLASSIC = {
 };
 
 export type GlowKind = 'star' | 'moon';
+export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill';
+export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm';
+export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe';
+export type MoonPhase = 'crescent' | 'half' | 'full';
 
 export interface Vortex { x: number; y: number; R: number; dir: number; }
 
@@ -55,6 +64,7 @@ export interface Glow {
   x: number; y: number; core: number; halo: number; ringW: number; dir: number;
   /** Crescent cutout: the lit part of the moon is the disk outside this offset circle. */
   cut?: { dx: number; dy: number; r: number };
+  phase?: MoonPhase;
 }
 
 /** One flame-shaped lobe of a cypress. */
@@ -69,22 +79,63 @@ export interface House {
   w: number; h: number; depth: number; side: 1 | -1;
   roofH: number; peak: number; flatRoof: boolean;
   wall: 'light' | 'warm'; roof: 'blue' | 'rust' | 'green'; windows: number; chimney: boolean;
+  /** block: the classic cube; cottage: low with a thatched roof; tall: a narrow townhouse; cafe: lit terrace. */
+  style: 'block' | 'cottage' | 'tall' | 'cafe';
 }
 
 export interface Church {
   id: number; x: number; base: number; bodyW: number; bodyH: number;
   towerW: number; towerH: number; spireTop: number; warm: boolean;
+  style: 'spire' | 'tower' | 'dome';
 }
 
-export type TreeKind = 'round' | 'poplar' | 'olive';
+export type TreeKind = 'round' | 'poplar' | 'olive' | 'pine' | 'iris';
 export interface Tree { id: number; x: number; y: number; r: number; kind: TreeKind; }
 
-interface SkyMajor { moon?: Glow; vortices: Vortex[]; cypress?: Cypress; }
-interface Village { houses: House[]; churches: Church[]; trees: Tree[]; }
+/** A windmill standing on a hill; its sails are drawn by the animation layer so they can turn. */
+export interface Mill { id: number; x: number; y: number; h: number; w: number; sail: number; ph: number; speed: number; warm: boolean; }
+export interface Haystack { id: number; x: number; y: number; w: number; h: number; }
+export interface Lamp { id: number; x: number; y: number; h: number; }
+export interface Boat { id: number; x: number; y: number; w: number; dir: 1 | -1; hue: number; }
 
-export interface Nearby {
-  vortices: Vortex[]; glows: Glow[]; cypresses: Cypress[];
+interface SkyMajor { moon?: Glow; vortices: Vortex[]; cypress?: Cypress; }
+interface Village {
   houses: House[]; churches: Church[]; trees: Tree[];
+  mills: Mill[]; stacks: Haystack[]; lamps: Lamp[]; boats: Boat[];
+}
+
+export interface Nearby extends Village {
+  vortices: Vortex[]; glows: Glow[]; cypresses: Cypress[];
+}
+
+const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mills: [], stacks: [], lamps: [], boats: [] });
+
+/** Regions are a few screens wide; region 0 holds the classic frame. */
+const REGION = 3000;
+const REGION0 = -750;
+const BIOMES: readonly [Biome, number][] = [['village', 0.28], ['wheat', 0.2], ['river', 0.2], ['orchard', 0.16], ['mill', 0.16]];
+const MOODS: readonly [Mood, number][] = [['classic', 0.42], ['indigo', 0.16], ['teal', 0.13], ['violet', 0.12], ['storm', 0.17]];
+const LANDMARKS: readonly [Landmark, number][] = [['none', 0.3], ['mill', 0.2], ['river', 0.2], ['haystacks', 0.17], ['cafe', 0.13]];
+
+function weighted<T>(table: readonly [T, number][], u: number): T {
+  for (const [v, w] of table) { if (u < w) return v; u -= w; }
+  return table[table.length - 1][0];
+}
+
+type ClassicLayout = typeof CLASSIC;
+
+/** Mirror the classic layout left to right. */
+function mirrorClassic(): ClassicLayout {
+  const fx = (x: number) => 1 - x;
+  const curve = (c: Curve): Curve => c.map(([x, y]) => [fx(x), y] as const).sort((a, b) => a[0] - b[0]);
+  return {
+    moon: { ...CLASSIC.moon, x: fx(CLASSIC.moon.x) },
+    stars: CLASSIC.stars.map(([x, y, s]) => [fx(x), y, s] as const) as unknown as ClassicLayout['stars'],
+    swirls: CLASSIC.swirls.map((sw) => ({ ...sw, x: fx(sw.x), dir: -sw.dir })),
+    band: curve(CLASSIC.band), ridgeBack: curve(CLASSIC.ridgeBack), ridgeFront: curve(CLASSIC.ridgeFront), villageTop: curve(CLASSIC.villageTop),
+    cypress: CLASSIC.cypress.map(([x, top, w, lean]) => [fx(x), top, w, -lean] as const) as unknown as ClassicLayout['cypress'],
+    church: { ...CLASSIC.church, x: fx(CLASSIC.church.x) },
+  };
 }
 
 /** A smooth curve through control points (in frame fractions), sampled for fast lookup. */
@@ -122,6 +173,13 @@ export class World {
   readonly horizon: number;
   private readonly landO: number[];
   private readonly classic: { band: Sampled; back: Sampled; front: Sampled; village: Sampled };
+  /** The classic layout for this seed (possibly mirrored). */
+  private readonly C: ClassicLayout;
+  /** Mirrors a classic-frame fraction when the layout is flipped. */
+  private readonly fx: (x: number) => number;
+  readonly flipped: boolean;
+  readonly mood: Mood;
+  readonly landmark: Landmark;
   private majorCache = new Map<number, SkyMajor>();
   private minorCache = new Map<number, Vortex[]>();
   private starCache = new Map<number, Glow[]>();
@@ -136,11 +194,16 @@ export class World {
     this.horizon = H * r.range(0.58, 0.62);
     this.landO = Array.from({ length: 6 }, () => r.range(0, 100));
     const j = (k: number, amt: number) => (i: number) => (hashFloat(this.s, 77, k, i) - 0.5) * 2 * amt;
+    this.flipped = r.chance(0.28);
+    this.fx = this.flipped ? (x) => 1 - x : (x) => x;
+    this.C = this.flipped ? mirrorClassic() : CLASSIC;
+    this.mood = weighted(MOODS, r.random());
+    this.landmark = weighted(LANDMARKS, r.random());
     this.classic = {
-      band: new Sampled(CLASSIC.band, j(1, 0.02)),
-      back: new Sampled(CLASSIC.ridgeBack, j(2, 0.012)),
-      front: new Sampled(CLASSIC.ridgeFront, j(3, 0.01)),
-      village: new Sampled(CLASSIC.villageTop, j(4, 0.008)),
+      band: new Sampled(this.C.band, j(1, 0.03)),
+      back: new Sampled(this.C.ridgeBack, j(2, 0.018)),
+      front: new Sampled(this.C.ridgeFront, j(3, 0.012)),
+      village: new Sampled(this.C.villageTop, j(4, 0.01)),
     };
   }
 
@@ -198,6 +261,57 @@ export class World {
     return smoothstep(0.05, 0.13, (this.horizon - this.ridgeBack(x)) / H);
   }
 
+  // ---------------------------------------------------------------- regions
+
+  /** Which region x falls in, and how far through it (0..1). Borders wander with noise. */
+  private regionAt(x: number): { idx: number; u: number } {
+    const f = (x + 260 * this.noise.noise2(x * 0.0012 + 11, 4.4) - REGION0) / REGION;
+    const idx = Math.floor(f);
+    return { idx, u: f - idx };
+  }
+
+  private biomeRaw(idx: number): Biome {
+    return weighted(BIOMES, hashFloat(this.s, idx, 901));
+  }
+
+  /** Region 0 is the classic village; others are drawn by lot, avoiding an immediate repeat. */
+  biomeOf(idx: number): Biome {
+    if (idx === 0) return 'village';
+    const b = this.biomeRaw(idx);
+    return b === this.biomeRaw(idx - 1) || ((idx === 1 || idx === -1) && b === 'village') ? weighted(BIOMES, hashFloat(this.s, idx, 902)) : b;
+  }
+
+  biomeAt(x: number): Biome {
+    return this.biomeOf(this.regionAt(x).idx);
+  }
+
+  /** How strongly x belongs to biome b: 1 inside its region, easing to 0 at the borders. */
+  biomeWeight(x: number, b: Biome): number {
+    const { idx, u } = this.regionAt(x);
+    if (this.biomeOf(idx) !== b) return 0;
+    return smoothstep(0, 0.1, u) * (1 - smoothstep(0.9, 1, u));
+  }
+
+  /** How much river there is at x (0..1): river regions, or the classic frame's river landmark. */
+  riverWeight(x: number): number {
+    const classic = this.landmark === 'river' ? this.classicWeight(x) * smoothstep(0.32, 0.4, this.fx(x / FRAME_W)) : 0;
+    return Math.max(classic, this.biomeWeight(x, 'river'));
+  }
+
+  /** Centre line of the river, as a depth into the valley. */
+  private riverCenter(x: number): number {
+    const t = this.landmark === 'river' ? lerp(0.36, 0.64, this.classicWeight(x)) : 0.36;
+    return this.depthY(x, t) + H * 0.008 * this.noise.noise2(x * 0.004 + 21, 9.1);
+  }
+
+  riverTop = (x: number): number => this.riverCenter(x) - H * 0.034 * this.riverWeight(x);
+  riverBottom = (x: number): number => this.riverCenter(x) + H * 0.034 * this.riverWeight(x);
+
+  inRiver(x: number, y: number, pad = 0): boolean {
+    if (this.riverWeight(x) < 0.02) return false;
+    return y > this.riverTop(x) - pad && y < this.riverBottom(x) + pad;
+  }
+
   /** y of a point a fraction t of the way from the village top to the bottom edge. */
   depthY(x: number, t: number): number {
     const top = this.villageTop(x);
@@ -227,16 +341,18 @@ export class World {
     const x0 = c * CW;
     m = { vortices: [] };
     const jx = () => r.range(-0.015, 0.015) * FRAME_W, jy = () => r.range(-0.012, 0.012) * H;
+    const C = this.C, moonChunk = World.chunkOf(C.moon.x * FRAME_W), cypressChunk = 1 - moonChunk;
 
-    if (c === 1) {
-      const cm = CLASSIC.moon, core = H * cm.core * r.range(0.92, 1.08);
-      m.moon = this.makeMoon(c, cm.x * FRAME_W + jx(), cm.y * H + jy(), core, r);
-    } else if (c !== 0 && c !== 2 && this.sparse(c, 11, 0.3)) {
+    if (c === moonChunk) {
+      const core = H * C.moon.core * r.range(0.9, 1.1);
+      m.moon = this.makeMoon(c, C.moon.x * FRAME_W + jx() * 1.5, C.moon.y * H + jy() * 1.5, core, r);
+    } else if (!this.isClassic(c) && c !== 2 && c !== -1 && this.sparse(c, 11, 0.3)) {
       m.moon = this.makeMoon(c, x0 + CW * r.range(0.2, 0.8), H * r.range(0.1, 0.17), H * r.range(0.045, 0.06), r);
     }
 
     if (c === 0) {
-      for (const sw of CLASSIC.swirls) m.vortices.push({ x: sw.x * FRAME_W + jx(), y: sw.y * H + jy(), R: sw.R * H * r.range(0.93, 1.07), dir: sw.dir });
+      // The great swirl wanders a little further from seed to seed than the rest of the layout.
+      for (const sw of C.swirls) m.vortices.push({ x: sw.x * FRAME_W + jx() * 2.5, y: sw.y * H + jy() * 2.5, R: sw.R * H * r.range(0.88, 1.12), dir: sw.dir });
     } else if (c !== 1 && c !== -1 && this.sparse(c, 13, 0.5)) {
       const cx = x0 + CW * r.range(0.3, 0.7), cy = H * r.range(0.26, 0.36), R = H * r.range(0.13, 0.17);
       const dir = r.chance(0.5) ? 1 : -1, side = r.chance(0.5) ? 1 : -1;
@@ -245,12 +361,12 @@ export class World {
       m.vortices.push({ x: cx + side * R * 0.95, y: cy + R * 0.8, R: R * r.range(0.5, 0.65), dir: -dir });
     }
 
-    if (c === 0) {
+    if (c === cypressChunk) {
       m.cypress = {
-        id: hash(this.s, c, 15), x: 0.25 * FRAME_W,
-        tongues: CLASSIC.cypress.map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy(), w * FRAME_W * r.range(0.95, 1.05), lean, i)),
+        id: hash(this.s, c, 15), x: this.fx(0.25) * FRAME_W,
+        tongues: C.cypress.map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy() * 2, w * FRAME_W * r.range(0.92, 1.08), lean, i)),
       };
-    } else if (c !== 1 && c !== -1 && this.sparse(c, 14, 0.34)) {
+    } else if (!this.isClassic(c) && c !== -1 && c !== 2 && this.sparse(c, 14, 0.34)) {
       const x = x0 + CW * r.range(0.15, 0.85), tall = r.chance(0.6);
       const w = FRAME_W * (tall ? r.range(0.11, 0.14) : r.range(0.08, 0.1));
       const tongues = [this.makeTongue(r, x, tall ? H * r.range(0.03, 0.12) : H * r.range(0.25, 0.4), w, r.range(-0.2, 0.2), 0)];
@@ -267,11 +383,15 @@ export class World {
   }
 
   private makeMoon(c: number, x: number, y: number, core: number, r: Rng): Glow {
+    const phase: MoonPhase = r.random() < 0.6 ? 'crescent' : r.chance(0.45) ? 'half' : 'full';
+    // The lit side faces away from the cutout; mirrored layouts light the other side.
+    const side = (this.flipped ? -1 : 1) * (this.isClassic(c) || r.chance(0.6) ? 1 : -1);
+    const cut = phase === 'full' ? undefined
+      : phase === 'half' ? { dx: -side * core * 0.62, dy: -core * 0.08, r: core * 0.95 }
+      : { dx: -side * core * r.range(0.4, 0.46), dy: -core * r.range(0.26, 0.32), r: core * 0.72 };
     return {
-      id: hash(this.s, c, 12), kind: 'moon', x, y, core,
-      halo: core * r.range(2.0, 2.2), ringW: core * 0.3, dir: r.chance(0.5) ? 1 : -1,
-      // A thick lit crescent on the lower right, like the original's waning moon.
-      cut: { dx: -core * r.range(0.4, 0.46), dy: -core * r.range(0.26, 0.32), r: core * 0.72 },
+      id: hash(this.s, c, 12), kind: 'moon', x, y, core, phase, cut,
+      halo: core * r.range(2.0, 2.3), ringW: core * 0.3, dir: r.chance(0.5) ? 1 : -1,
     };
   }
 
@@ -289,6 +409,19 @@ export class World {
     let v = this.minorCache.get(c);
     if (v) return v;
     v = [];
+    if (c === 0 && hashFloat(this.s, 0, 31) < 0.35) {
+      // Sometimes a small eddy curls in an empty patch of the classic sky.
+      const r = this.rng(c, 2);
+      const majors = this.majorsNear(c);
+      for (let tries = 0; tries < 40 && !v.length; tries++) {
+        const cand = { x: FRAME_W * r.range(0.05, 0.95), y: H * r.range(0.1, 0.4), R: H * r.range(0.05, 0.07), dir: r.chance(0.5) ? 1 : -1 };
+        const clear = majors.every((mj) =>
+          (!mj.moon || dist(cand.x, cand.y, mj.moon.x, mj.moon.y) > mj.moon.halo + cand.R * 1.5) &&
+          mj.vortices.every((o) => dist(cand.x, cand.y, o.x, o.y) > o.R + cand.R * 1.4) &&
+          (!mj.cypress || !cypressCovers(mj.cypress, this.noise, cand.x, cand.y, cand.R)));
+        if (clear) v.push(cand);
+      }
+    }
     if (!this.isClassic(c)) {
       const r = this.rng(c, 2);
       const majors = this.majorsNear(c);
@@ -316,11 +449,15 @@ export class World {
 
   private classicStars(c: number): Glow[] {
     const r = this.rng(c, 3);
-    return CLASSIC.stars
+    // Each seed leaves out a couple of the eleven stars, so the constellation changes.
+    const drop = new Set<number>();
+    const nDrop = Math.floor(hashFloat(this.s, 0, 33) * 3);
+    for (let k = 0; k < nDrop; k++) drop.add(Math.floor(hashFloat(this.s, 0, 34, k) * this.C.stars.length));
+    return this.C.stars
       .map(([x, y, size], i) => ({ x: x * FRAME_W, y: y * H, size, i }))
-      .filter((st) => World.chunkOf(st.x) === c)
+      .filter((st) => World.chunkOf(st.x) === c && !drop.has(st.i))
       .map(({ x, y, size, i }) => {
-        const core = H * 0.0115 * size * r.range(0.9, 1.1);
+        const core = H * 0.0115 * size * r.range(0.82, 1.18);
         return {
           id: hash(this.s, c, 3, i), kind: 'star' as const,
           x: x + r.range(-0.012, 0.012) * FRAME_W, y: y + r.range(-0.01, 0.01) * H,
@@ -364,72 +501,243 @@ export class World {
   private village(c: number): Village {
     let v = this.villageCache.get(c);
     if (v) return v;
-    const r = this.rng(c, 4);
-    const x0 = c * CW;
-    const cypresses = this.majorsNear(c).map((m) => m.cypress).filter((q): q is Cypress => !!q);
-    const blocked = (x: number, y: number, pad: number) => cypresses.some((q) => cypressCovers(q, this.noise, x, y, pad));
-    v = { houses: [], churches: [], trees: [] };
-    const classic = c === 1;
+    v = this.isClassic(c) ? this.classicVillage(c) : this.regionVillage(c);
+    this.villageCache.set(c, v);
+    return v;
+  }
 
-    // Towns cluster around a center; some have a church whose spire rises above the hills.
-    const town = classic ? true : c === 0 ? false : r.chance(0.6);
-    const cx = classic ? CLASSIC.church.x * FRAME_W + r.range(-0.02, 0.02) * FRAME_W : x0 + CW * r.range(0.2, 0.8);
-    if (town && (classic || r.chance(0.55))) {
-      v.churches.push({
-        id: hash(this.s, c, 41), x: cx, base: this.depthY(cx, classic ? CLASSIC.church.base : r.range(0.2, 0.28)),
-        bodyW: H * r.range(0.065, 0.075), bodyH: H * r.range(0.036, 0.044),
-        towerW: H * 0.022, towerH: H * r.range(0.025, 0.035),
-        spireTop: classic ? CLASSIC.church.spireTop * H : this.ridgeBack(cx) - H * r.range(0.01, 0.04), warm: !classic && r.chance(0.3),
-      });
+  private cypressesNear(c: number): Cypress[] {
+    return this.majorsNear(c).map((m) => m.cypress).filter((q): q is Cypress => !!q);
+  }
+
+  private makeHouse(r: Rng, id: number, x: number, y: number, size: number, style: House['style']): House {
+    const u = r.random();
+    const w = size * (style === 'tall' ? r.range(0.7, 0.95) : style === 'cottage' ? r.range(1.3, 1.8) : style === 'cafe' ? 1.6 : r.range(0.9, 1.6));
+    const h = size * (style === 'tall' ? r.range(1.2, 1.6) : style === 'cottage' ? r.range(0.5, 0.65) : r.range(0.6, 0.9));
+    return {
+      id, x, y, size, w, h, style,
+      depth: w * r.range(0.25, 0.45), side: r.chance(0.5) ? 1 : -1,
+      roofH: size * (style === 'cottage' ? r.range(0.55, 0.8) : r.range(0.45, 0.75)), peak: r.range(-0.2, 0.2),
+      flatRoof: style === 'tall' ? r.chance(0.35) : style === 'block' && r.chance(0.08),
+      wall: style === 'cafe' || r.chance(0.12) ? 'warm' : 'light',
+      roof: u < 0.62 ? 'blue' : u < 0.82 ? 'rust' : 'green',
+      windows: style === 'tall' ? r.int(1, 2) : style === 'cafe' ? 2 : r.int(0, 2), chimney: r.chance(0.3),
+    };
+  }
+
+  private makeChurch(r: Rng, id: number, x: number, base: number, spireTop: number, warm: boolean): Church {
+    const u = r.random();
+    return {
+      id, x, base, spireTop, warm,
+      bodyW: H * r.range(0.065, 0.078), bodyH: H * r.range(0.036, 0.046),
+      towerW: H * r.range(0.02, 0.026), towerH: H * r.range(0.025, 0.035),
+      style: u < 0.6 ? 'spire' : u < 0.82 ? 'tower' : 'dome',
+    };
+  }
+
+  /** Place houses with rejection sampling; `at` proposes a position, or null to skip a try. */
+  private placeHouses(v: Village, r: Rng, c: number, n: number, tries: number,
+    at: () => { x: number; y: number; size: number; style: House['style'] } | null,
+    blocked: (x: number, y: number, pad: number) => boolean) {
+    for (let k = 0; v.houses.length < n && k < tries; k++) {
+      const p = at();
+      if (!p || blocked(p.x, p.y, p.size * 0.6)) continue;
+      if (v.churches.some((ch) => Math.abs(p.x - ch.x) < ch.bodyW && Math.abs(p.y - ch.base) < p.size * 1.6)) continue;
+      if (v.houses.some((h) => Math.abs(h.x - p.x) < (h.size + p.size) * 0.75 && Math.abs(h.y - p.y) < (h.size + p.size) * 0.3)) continue;
+      if (v.stacks.some((s) => Math.abs(s.x - p.x) < s.w + p.size && Math.abs(s.y - p.y) < p.size)) continue;
+      v.houses.push(this.makeHouse(r, hash(this.s, c, 42, k), p.x, p.y, p.size, p.style));
     }
+  }
 
-    const n = classic ? r.int(48, 58) : town ? r.int(26, 44) : r.int(2, 6);
-    for (let tries = 0; v.houses.length < n && tries < 700; tries++) {
-      const x = classic ? FRAME_W * r.range(0.36, 1.03) : town ? cx + FRAME_W * 0.24 * r.bell() : x0 + CW * r.random();
-      const t = Math.pow(r.random(), 0.85);
-      const y = this.depthY(x, lerp(0.1, 0.88, t)), size = H * lerp(0.016, 0.036, t);
-      if (blocked(x, y, size * 0.6)) continue;
-      if (v.churches.some((ch) => Math.abs(x - ch.x) < ch.bodyW && Math.abs(y - ch.base) < size * 1.6)) continue;
-      if (v.houses.some((h) => Math.abs(h.x - x) < (h.size + size) * 0.75 && Math.abs(h.y - y) < (h.size + size) * 0.3)) continue;
-      const w = size * r.range(0.9, 1.6), u = r.random();
-      v.houses.push({
-        id: hash(this.s, c, 42, tries), x, y, size, w, h: size * r.range(0.6, 0.9),
-        depth: w * r.range(0.25, 0.45), side: r.chance(0.5) ? 1 : -1,
-        roofH: size * r.range(0.45, 0.75), peak: r.range(-0.2, 0.2), flatRoof: r.chance(0.08),
-        wall: r.chance(0.12) ? 'warm' : 'light', roof: u < 0.62 ? 'blue' : u < 0.82 ? 'rust' : 'green',
-        windows: r.int(0, 2), chimney: r.chance(0.3),
-      });
+  /** A line of rounded olive trees along the foot of the hills. */
+  private treeLine(v: Village, r: Rng, c: number, from: number, to: number, gappy: boolean, blocked: (x: number, y: number, pad: number) => boolean) {
+    for (let x = from, k = 0; x < to; x += r.range(26, 48), k++) {
+      if (gappy && this.noise.noise2(x * 0.004 + 40, 2.2) < -0.1) continue;
+      const y = this.villageTop(x) + H * r.range(0.0, 0.03);
+      if (blocked(x, y, 0)) continue;
+      v.trees.push({ id: hash(this.s, c, 44, k), x, y, r: H * r.range(0.018, 0.032), kind: 'olive' });
     }
+  }
 
-    // A line of rounded olive trees along the foot of the hills, gappy where the noise says so.
-    const lineFrom = classic ? 0.4 * FRAME_W : x0, lineTo = classic ? FRAME_W * 1.02 : x0 + CW;
-    if (classic || c !== 0) {
-      for (let x = lineFrom, k = 0; x < lineTo; x += r.range(26, 48), k++) {
-        if (!classic && this.noise.noise2(x * 0.004 + 40, 2.2) < -0.1) continue;
-        const y = this.villageTop(x) + H * r.range(0.0, 0.03);
-        if (blocked(x, y, 0)) continue;
-        v.trees.push({ id: hash(this.s, c, 44, k), x, y, r: H * r.range(0.018, 0.032), kind: 'olive' });
+  private makeMill(r: Rng, id: number, x: number, y: number, scale = 1): Mill {
+    const h = H * r.range(0.1, 0.14) * scale;
+    return {
+      id, x, y, h, w: h * r.range(0.3, 0.38), sail: h * r.range(0.62, 0.78), ph: r.range(0, 6.28),
+      speed: r.range(0.15, 0.35) * (r.chance(0.5) ? 1 : -1), warm: r.chance(0.5),
+    };
+  }
+
+  private addStacks(v: Village, r: Rng, c: number, n: number, xs: () => number, ts: () => number, blocked: (x: number, y: number, pad: number) => boolean) {
+    for (let k = 0, tries = 0; k < n && tries < n * 8; tries++) {
+      const x = xs(), t = ts(), y = this.depthY(x, t), w = H * lerp(0.035, 0.085, t);
+      if (blocked(x, y, w * 0.5) || v.stacks.some((s) => Math.abs(s.x - x) < (s.w + w) * 0.6 && Math.abs(s.y - y) < w * 0.5)) continue;
+      v.stacks.push({ id: hash(this.s, c, 46, tries), x, y, w, h: w * r.range(0.65, 0.9) });
+      k++;
+    }
+  }
+
+  private addLampsAlong(v: Village, r: Rng, c: number, from: number, to: number, yAt: (x: number) => number, blocked: (x: number, y: number, pad: number) => boolean) {
+    for (let x = from + r.range(0, 40), k = 0; x < to; x += r.range(65, 105), k++) {
+      const y = yAt(x);
+      if (blocked(x, y, 0)) continue;
+      v.lamps.push({ id: hash(this.s, c, 47, k), x, y, h: H * r.range(0.035, 0.045) });
+    }
+  }
+
+  /** Clumps of irises along the bottom edge. */
+  private foregroundPlants(v: Village, r: Rng, c: number, x0: number, x1: number, n: number, blocked: (x: number, y: number, pad: number) => boolean) {
+    for (let k = 0; k < n; k++) {
+      const x = r.range(x0, x1), t = r.range(0.82, 1.0), y = this.depthY(x, t);
+      if (blocked(x, y, 0)) continue;
+      v.trees.push({ id: hash(this.s, c, 48, k), x, y, r: H * r.range(0.025, 0.045), kind: 'iris' });
+    }
+  }
+
+  /** The classic frame's village: the faithful layout plus this seed's landmark. */
+  private classicVillage(c: number): Village {
+    const r = this.rng(c, 4), v = emptyVillage(), fx = this.fx, lm = this.landmark;
+    // Everything in the classic village is generated by the chunk holding the church.
+    if (World.chunkOf(this.C.church.x * FRAME_W) !== c) return v;
+    const cypresses = this.cypressesNear(c);
+    const X = (f: number) => fx(f) * FRAME_W;
+    const span = (a: number, b: number): [number, number] => [Math.min(X(a), X(b)), Math.max(X(a), X(b))];
+    const millX = X(0.84);
+    const blocked = (x: number, y: number, pad: number) =>
+      cypresses.some((q) => cypressCovers(q, this.noise, x, y, pad)) || this.inRiver(x, y, pad + 4) ||
+      (lm === 'mill' && Math.abs(x - millX) < H * 0.07 && y < this.villageTop(x) + H * 0.08);
+
+    const cx = this.C.church.x * FRAME_W + r.range(-0.03, 0.03) * FRAME_W;
+    v.churches.push(this.makeChurch(r, hash(this.s, c, 41), cx, this.depthY(cx, this.C.church.base), this.C.church.spireTop * H + r.range(-0.02, 0.02) * H, false));
+
+    if (lm === 'haystacks') {
+      const [a, b] = span(0.42, 0.68);
+      this.addStacks(v, r, c, r.int(4, 6), () => r.range(a, b), () => r.range(0.55, 0.85), blocked);
+    }
+    if (lm === 'mill') v.mills.push(this.makeMill(r, hash(this.s, c, 49), millX, this.ridgeFront(millX) + H * 0.012));
+    if (lm === 'cafe') {
+      const x = cx + (this.flipped ? -1 : 1) * FRAME_W * r.range(0.05, 0.1);
+      v.houses.push(this.makeHouse(r, hash(this.s, c, 50), x, this.depthY(x, 0.55), H * 0.042, 'cafe'));
+      this.addLampsAlong(v, r, c, x - 120, x + 140, (xx) => this.depthY(xx, 0.62), blocked);
+    }
+    if (lm === 'river') {
+      const [a, b] = span(0.4, 1.03);
+      this.addLampsAlong(v, r, c, a, b, (x) => this.riverTop(x) - 2, () => false);
+      for (let k = 0, n = r.int(1, 3); k < n; k++) {
+        const x = r.range(a + 60, b - 60);
+        v.boats.push({ id: hash(this.s, c, 51, k), x, y: this.riverBottom(x) - H * 0.008, w: H * r.range(0.05, 0.07), dir: r.chance(0.5) ? 1 : -1, hue: r.random() });
       }
     }
 
-    // Bushes and trees scattered through the village and the foreground.
-    const nt = classic ? r.int(14, 18) : r.int(3, town ? 10 : 5);
-    for (let j = 0; j < nt; j++) {
-      const x = classic ? FRAME_W * r.range(0.4, 1.02) : town && r.chance(0.6) ? cx + FRAME_W * 0.3 * r.bell() : x0 + CW * r.random();
-      const t = r.range(0.08, 0.95);
+    const [lo, hi] = span(0.36, 1.03);
+    this.placeHouses(v, r, c, r.int(46, 56), 800, () => {
+      const t = Math.pow(r.random(), 0.85), x = r.range(lo, hi);
+      const style: House['style'] = r.chance(0.12) ? 'tall' : r.chance(0.1) ? 'cottage' : 'block';
+      return { x, y: this.depthY(x, lerp(0.1, 0.88, t)), size: H * lerp(0.016, 0.036, t), style };
+    }, blocked);
+
+    const [tlo, thi] = span(0.4, 1.02);
+    this.treeLine(v, r, c, tlo, thi, false, blocked);
+    for (let j = 0, n = r.int(14, 18); j < n; j++) {
+      const x = r.range(tlo, thi), t = r.range(0.08, 0.95);
       if (blocked(x, this.depthY(x, t), 0)) continue;
-      const kind: TreeKind = r.chance(0.15) ? 'poplar' : r.chance(0.5) ? 'olive' : 'round';
+      const kind: TreeKind = r.chance(0.14) ? 'poplar' : r.chance(0.08) ? 'pine' : r.chance(0.5) ? 'olive' : 'round';
       v.trees.push({ id: hash(this.s, c, 43, j), x, y: this.depthY(x, t), r: H * r.range(0.022, 0.05) * lerp(0.7, 1.3, t), kind });
     }
-    if (classic) {
-      // The dark bushes in the bottom right corner.
-      for (let j = 0; j < 3; j++) {
-        const x = FRAME_W * r.range(0.86, 1.02);
-        v.trees.push({ id: hash(this.s, c, 45, j), x, y: H * r.range(0.97, 1.03), r: H * r.range(0.05, 0.075), kind: 'round' });
-      }
+    // The dark bushes in the corner opposite the cypress.
+    for (let j = 0; j < 3; j++) {
+      const x = X(r.range(0.86, 1.02));
+      v.trees.push({ id: hash(this.s, c, 45, j), x, y: H * r.range(0.97, 1.03), r: H * r.range(0.05, 0.075), kind: 'round' });
     }
+    return v;
+  }
 
-    this.villageCache.set(c, v);
+  /** A chunk outside the classic frame, furnished according to its region. */
+  private regionVillage(c: number): Village {
+    const r = this.rng(c, 4), v = emptyVillage(), x0 = c * CW, x1 = x0 + CW;
+    const biome = this.biomeAt(x0 + CW / 2);
+    const cypresses = this.cypressesNear(c);
+    const blocked = (x: number, y: number, pad: number) =>
+      cypresses.some((q) => cypressCovers(q, this.noise, x, y, pad)) || this.inRiver(x, y, pad + 4);
+    const anyX = () => r.range(x0, x1);
+    const scatter = (n: number, kinds: [TreeKind, number][], tLo = 0.08, tHi = 0.95) => {
+      for (let j = 0; j < n; j++) {
+        const x = anyX(), t = r.range(tLo, tHi), y = this.depthY(x, t);
+        if (blocked(x, y, 0)) continue;
+        v.trees.push({ id: hash(this.s, c, 43, j), x, y, r: H * r.range(0.022, 0.05) * lerp(0.7, 1.3, t), kind: weighted(kinds, r.random()) });
+      }
+    };
+
+    if (biome === 'village') {
+      const town = r.chance(0.7), cx = x0 + CW * r.range(0.2, 0.8);
+      if (town && r.chance(0.6)) {
+        v.churches.push(this.makeChurch(r, hash(this.s, c, 41), cx, this.depthY(cx, r.range(0.2, 0.28)), this.ridgeBack(cx) - H * r.range(0.01, 0.05), r.chance(0.3)));
+      }
+      if (town && r.chance(0.45)) {
+        const x = cx + r.range(-160, 160), y = this.depthY(x, r.range(0.45, 0.65));
+        if (!blocked(x, y, 20)) {
+          v.houses.push(this.makeHouse(r, hash(this.s, c, 50), x, y, H * 0.04, 'cafe'));
+          this.addLampsAlong(v, r, c, x - 120, x + 140, (xx) => this.depthY(xx, 0.68), blocked);
+        }
+      }
+      this.placeHouses(v, r, c, town ? r.int(26, 44) : r.int(3, 7), 700, () => {
+        const t = Math.pow(r.random(), 0.85), x = town ? cx + FRAME_W * 0.22 * r.bell() : anyX();
+        const style: House['style'] = r.chance(0.15) ? 'tall' : r.chance(0.15) ? 'cottage' : 'block';
+        return { x, y: this.depthY(x, lerp(0.1, 0.88, t)), size: H * lerp(0.016, 0.036, t), style };
+      }, blocked);
+      this.treeLine(v, r, c, x0, x1, true, blocked);
+      scatter(r.int(3, 8), [['round', 0.4], ['olive', 0.3], ['poplar', 0.15], ['pine', 0.15]]);
+    } else if (biome === 'wheat') {
+      this.addStacks(v, r, c, r.int(3, 7), anyX, () => r.range(0.2, 0.85), blocked);
+      this.placeHouses(v, r, c, r.int(0, 2), 60, () => {
+        const x = anyX(), t = r.range(0.1, 0.4);
+        return { x, y: this.depthY(x, t), size: H * lerp(0.022, 0.034, t), style: 'cottage' };
+      }, blocked);
+      scatter(r.int(1, 4), [['poplar', 0.5], ['round', 0.3], ['pine', 0.2]], 0.05, 0.6);
+      this.foregroundPlants(v, r, c, x0, x1, r.int(0, 2), blocked);
+    } else if (biome === 'river') {
+      // A town strung along the far bank, its gaslights doubled in the water.
+      this.placeHouses(v, r, c, r.int(14, 24), 300, () => {
+        const x = anyX();
+        if (this.riverWeight(x) < 0.4) return null;
+        return { x, y: this.riverTop(x) - H * r.range(0.004, 0.03), size: H * r.range(0.016, 0.026), style: r.chance(0.3) ? 'tall' : 'block' };
+      }, () => false);
+      this.addLampsAlong(v, r, c, x0, x1, (x) => this.riverTop(x) - 2, (x) => this.riverWeight(x) < 0.5);
+      for (let k = 0, n = r.int(1, 3); k < n; k++) {
+        const x = anyX();
+        if (this.riverWeight(x) < 0.6) continue;
+        v.boats.push({ id: hash(this.s, c, 51, k), x, y: this.riverBottom(x) - H * 0.008, w: H * r.range(0.05, 0.075), dir: r.chance(0.5) ? 1 : -1, hue: r.random() });
+      }
+      this.treeLine(v, r, c, x0, x1, true, blocked);
+      scatter(r.int(1, 3), [['round', 0.5], ['poplar', 0.5]], 0.75, 0.95);
+      this.foregroundPlants(v, r, c, x0, x1, r.int(1, 4), blocked);
+    } else if (biome === 'orchard') {
+      // Olive trees planted in rows that recede toward the hills.
+      for (const t of [0.12, 0.27, 0.44, 0.64, 0.86]) {
+        const step = lerp(38, 90, t), off = r.range(0, step);
+        for (let x = x0 + off, k = 0; x < x1; x += step * r.range(0.85, 1.15), k++) {
+          const y = this.depthY(x, t + r.range(-0.02, 0.02));
+          if (blocked(x, y, 0)) continue;
+          v.trees.push({ id: hash(this.s, c, 52, Math.round(t * 100), k), x, y, r: H * lerp(0.018, 0.05, t), kind: 'olive' });
+        }
+      }
+      this.placeHouses(v, r, c, r.int(0, 1), 40, () => {
+        const x = anyX(), t = r.range(0.05, 0.2);
+        return { x, y: this.depthY(x, t), size: H * 0.024, style: 'cottage' };
+      }, blocked);
+    } else {
+      // Windmill hills: one or two mills on the ridge, a hamlet and a few haystacks.
+      for (let k = 0, n = r.int(1, 2); k < n; k++) {
+        const x = x0 + CW * (n === 1 ? r.range(0.3, 0.7) : r.range(0.15, 0.4) + k * 0.45);
+        v.mills.push(this.makeMill(r, hash(this.s, c, 49, k), x, this.ridgeFront(x) + H * 0.012, r.range(0.85, 1.15)));
+      }
+      this.placeHouses(v, r, c, r.int(2, 6), 120, () => {
+        const x = anyX(), t = r.range(0.1, 0.6);
+        return { x, y: this.depthY(x, t), size: H * lerp(0.018, 0.032, t), style: r.chance(0.6) ? 'cottage' : 'block' };
+      }, blocked);
+      this.addStacks(v, r, c, r.int(0, 3), anyX, () => r.range(0.5, 0.85), blocked);
+      this.treeLine(v, r, c, x0, x1, true, (x, y, p) => blocked(x, y, p) || v.mills.some((m) => Math.abs(m.x - x) < m.w * 1.5));
+      scatter(r.int(1, 4), [['pine', 0.4], ['round', 0.3], ['poplar', 0.3]]);
+    }
     return v;
   }
 
@@ -437,7 +745,7 @@ export class World {
   near(c: number): Nearby {
     let n = this.nearCache.get(c);
     if (n) return n;
-    n = { vortices: [], glows: [], cypresses: [], houses: [], churches: [], trees: [] };
+    n = { vortices: [], glows: [], cypresses: [], ...emptyVillage() };
     for (let i = c - REACH; i <= c + REACH; i++) {
       const m = this.major(i), vil = this.village(i);
       n.vortices.push(...m.vortices, ...this.minor(i));
@@ -447,6 +755,10 @@ export class World {
       n.houses.push(...vil.houses);
       n.churches.push(...vil.churches);
       n.trees.push(...vil.trees);
+      n.mills.push(...vil.mills);
+      n.stacks.push(...vil.stacks);
+      n.lamps.push(...vil.lamps);
+      n.boats.push(...vil.boats);
     }
     this.nearCache.set(c, n);
     return n;
