@@ -9,10 +9,10 @@
 //
 // Everything lives in world coordinates, so it works the same in the gallery and while wandering.
 
-import { css, lighten, type RGB } from '../core/color';
+import { css, hex, jitter, lighten, type RGB } from '../core/color';
 import { clamp } from '../core/math';
-import { Rng } from '../core/rng';
-import type { Field } from '../core/brush';
+import { hash, Rng } from '../core/rng';
+import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
 import { houseWindows, millHub } from '../paint/village';
 import { cypressCovers, World, type Glow, type Mill } from '../world/world';
@@ -43,6 +43,10 @@ function glowSprite(rgb: string): HTMLCanvasElement {
   g.fillRect(0, 0, 128, 128);
   return c;
 }
+
+const SAIL_WARM = ['#e6d4a4', '#f0e2b6', '#d2bd8a', '#dccb98'].map(hex);
+const SAIL_COOL = ['#b4c8e0', '#ccdcee', '#98b0d0', '#bfd0e6'].map(hex);
+const SAIL_WOOD = ['#38281c', '#4a3524', '#2c1f16', '#56402a'].map(hex);
 
 const STAR_ARC: RGB[] = [[251, 241, 184], [246, 223, 110], [236, 235, 176], [220, 230, 220], [255, 248, 216]];
 
@@ -129,33 +133,48 @@ export class Life {
     return out;
   }
 
-  /** Windmill sails: four latticed blades round a hub, turned to `angle`. */
+  /**
+   * Windmill sails: four latticed blades round a hub, turned to `angle`. They are laid on with the
+   * same impasto brush as the rest of the painting; every stroke is seeded from the mill, so the
+   * wheel is one solid painted object that simply turns.
+   */
   private drawSails(ctx: CanvasRenderingContext2D, view: View, m: Mill, angle: number) {
     const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
-    const [hx, hy] = millHub(m), L = m.sail, wBlade = L * 0.2;
+    const [hx, hy] = millHub(m), L = m.sail, wBlade = L * 0.22;
+    const cloth = m.warm ? SAIL_WARM : SAIL_COOL;
     ctx.save();
     ctx.translate(sx(hx), hy * k);
     ctx.scale(k, k);
-    ctx.lineCap = 'round';
     for (let i = 0; i < 4; i++) {
       ctx.save();
       ctx.rotate(angle + (i * Math.PI) / 2);
-      // The spar, then the lattice frame of the sail beside it.
-      ctx.strokeStyle = 'rgba(42,30,22,0.95)';
-      ctx.lineWidth = 3.4;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, 0); ctx.stroke();
-      ctx.strokeStyle = m.warm ? 'rgba(214,196,150,0.9)' : 'rgba(178,196,214,0.85)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(L * 0.2, 1, L * 0.8, wBlade);
-      ctx.lineWidth = 1.3;
-      ctx.beginPath();
-      for (let j = 1; j < 6; j++) { const x = L * 0.2 + (L * 0.8 * j) / 6; ctx.moveTo(x, 1); ctx.lineTo(x, 1 + wBlade); }
-      ctx.moveTo(L * 0.2, 1 + wBlade / 2); ctx.lineTo(L, 1 + wBlade / 2);
-      ctx.stroke();
+      const r = new Rng(hash(m.id, i, 77));
+      const rows = 4, rowH = wBlade / rows;
+      // Canvas cloth: broad strokes along the blade, a few to a row, each a slightly different tone.
+      for (let row = 0; row < rows; row++) {
+        for (let seg = 0; seg < 3; seg++) {
+          const x0 = L * (0.2 + 0.27 * seg) + r.range(-2, 2), x1 = x0 + L * 0.3;
+          const y = 3 + (row + 0.5) * rowH + r.range(-0.7, 0.7);
+          stroke(ctx, r, [[x0, y], [(x0 + x1) / 2, y + r.range(-1, 1)], [x1, y + r.range(-0.8, 0.8)]], rowH * 1.15, jitter(r.pick(cloth), r, 16));
+        }
+      }
+      // The lattice: dark cross-bars and the frame's outer rail, as short thick dabs.
+      for (let j = 0; j < 5; j++) {
+        const x = L * (0.22 + 0.19 * j) + r.range(-1.5, 1.5);
+        stroke(ctx, r, [[x, 2.5], [x + r.range(-1, 1), 3 + wBlade * 0.5], [x, 3.5 + wBlade]], 2.6, jitter(r.pick(SAIL_WOOD), r, 10));
+      }
+      stroke(ctx, r, [[L * 0.2, 3.5 + wBlade], [L * 0.6, 3.5 + wBlade + r.range(-0.6, 0.6)], [L, 3.5 + wBlade]], 3, jitter(r.pick(SAIL_WOOD), r, 10));
+      stroke(ctx, r, [[L * 0.2, 2.2], [L * 0.6, 2.2 + r.range(-0.6, 0.6)], [L, 2.2]], 3, jitter(r.pick(SAIL_WOOD), r, 10));
+      // The spar, thick and dark, with the brush's own highlight along it.
+      stroke(ctx, r, [[2, 0], [L * 0.5, r.range(-0.8, 0.8)], [L, 0]], 4.6, jitter(r.pick(SAIL_WOOD), r, 8));
       ctx.restore();
     }
-    ctx.fillStyle = '#2a1e16';
-    ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+    // The hub: a dab of dark paint with a lighter cap.
+    const hr = new Rng(hash(m.id, 78));
+    for (let j = 0; j < 4; j++) {
+      const t = (j / 4) * Math.PI * 2;
+      stroke(ctx, hr, [[Math.cos(t) * 2.2, Math.sin(t) * 2.2], [Math.cos(t + 1.6) * 2.2, Math.sin(t + 1.6) * 2.2]], 5.2, jitter(hr.pick(SAIL_WOOD), hr, 8));
+    }
     ctx.restore();
   }
 
