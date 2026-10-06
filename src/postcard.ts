@@ -68,17 +68,17 @@ export async function renderPostcard(info: PostcardInfo): Promise<HTMLCanvasElem
 
   // Stamp and postmark, top right.
   stamp(g, W - M - 210, M - 10, 210, 250, info.seed, rnd);
-  postmark(g, W - M - 440, M + 40, info.place);
+  postmark(g, W - M - 450, M - 20, info.place);
 
   // Title block.
   g.fillStyle = DIM;
   g.font = `500 28px ${SANS}`;
-  spaced(g, 'GREETINGS FROM', rx, 330, 6);
+  spaced(g, 'GREETINGS FROM', rx, 400, 6);
   g.fillStyle = INK;
   g.font = `italic 600 112px ${SERIF}`;
   const titleLines = wrap(g, info.title, rw);
-  titleLines.forEach((l, i) => g.fillText(l, rx, 440 + i * 108));
-  let y = 440 + (titleLines.length - 1) * 108 + 70;
+  titleLines.forEach((l, i) => g.fillText(l, rx, 510 + i * 108));
+  let y = 510 + (titleLines.length - 1) * 108 + 70;
 
   g.font = `500 54px ${SERIF}`;
   g.fillStyle = INK;
@@ -108,8 +108,8 @@ export async function renderPostcard(info: PostcardInfo): Promise<HTMLCanvasElem
   // Address lines at the foot, as on the back of a card.
   g.strokeStyle = 'rgba(122,109,85,0.5)';
   g.lineWidth = 2;
-  const ay = H - M - 170;
-  for (let i = 0; i < 3; i++) {
+  const ay = H - M - 100;
+  for (let i = 0; i < 2; i++) {
     g.beginPath();
     g.moveTo(rx, ay + i * 62);
     g.lineTo(rx + rw, ay + i * 62);

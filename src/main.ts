@@ -312,6 +312,12 @@ class App {
 
   /** Save the view as a postcard carrying the same details as the gallery placard. */
   private async save(plain = false) {
+    // Wait (briefly) for the visible chunks to finish painting, so the print is never half-blank.
+    const visible = () => (this.mode === 'gallery' ? [0, 1] : this.visibleChunks());
+    if (visible().some((c) => !this.pool.get(c)?.done)) {
+      this.toast('Still painting. Your postcard will print in a moment…');
+      for (let i = 0; i < 100 && visible().some((c) => !this.pool.get(c)?.done); i++) await new Promise((r) => setTimeout(r, 200));
+    }
     const { out, x0, w, strokes } = this.compose(), wander = this.mode === 'wander', wd = this.world;
     const mid = x0 + w / 2, suffix = wander ? `-${Math.round(this.camX)}` : '';
     if (plain) return this.download(out, `starry-night-${wd.seed}${suffix}.png`);

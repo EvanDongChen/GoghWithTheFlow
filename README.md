@@ -36,6 +36,13 @@ flicker like candlelight, and every so often a shooting star crosses the night.
 Every seed is its own night, and the same seed always paints the same world. Share a link and
 your friend sees exactly your night.
 
+## Sound, sky and postcards
+
+- **Soundtrack** (): generated live with Web Audio, nothing sampled. The seed sets the key and chord order; the sky's mood sets the scale; a music-box melody and a distant bell float over a slow pad. Regions have their own sounds that crossfade as you walk: crickets in the wheat and orchards, running water along the river, wind on the windmill hills, birds at dawn.
+- **Time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn or dusk), and the sky drifts into a different one every few screens as you wander. The current mood shows in the HUD.
+- **Postcards** (): saving renders a postcard with the painting, its title and number, sky, moon, landmark or country, brushstroke count, a stamp and a postmark.  saves the plain image.
+- **Foreground tree**: each seed picks a different silhouette for the big cypress on the near side of the gallery painting.
+
 ## Run it
 
 ```sh
@@ -62,7 +69,8 @@ Source: GitHub Actions**. After that, every push to `main` publishes the site to
 | `I` | About |
 | `Space` | Pause or resume drifting |
 | `←` `→`, drag, scroll | Walk through the night |
-| `S` | Save the current view as PNG |
+| `M` | Play / mute the soundtrack |
+| `S` | Save a postcard (`Shift+S`: plain PNG) |
 | `F` | Fullscreen |
 
 URL parameters: `?seed=arles`, `&mode=wander`, `&speed=0..160`, `&animate=0`, `&intro=0`.
