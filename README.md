@@ -27,7 +27,7 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
   Umbrella pines, poplars, irises and boats turn up along the way. Each stretch is painted just ahead of you.
 
 **Every seed is different.** Each one picks a sky mood (classic, indigo, teal, violet or
-stormy), a moon phase (crescent, half or full) and an order of regions. The gallery painting may
+stormy), a moon phase (crescent, half or full) and an order of regions. It also gets a season and a sky temperament. The gallery painting may
 be mirrored, its stars and swirls shift, and it gets a landmark: a windmill on the hills, a
 gaslit river, haystacks, a lit café, sunflowers in the foreground, or crows circling over the wheat (usually under a storm).
 
@@ -41,8 +41,9 @@ your friend sees exactly your night.
 ## Sound, sky and postcards
 
 - **Soundtrack** (`M`): generated live with Web Audio, nothing sampled. The seed sets the key and chord order; the sky's mood sets the scale; a music-box melody and a distant bell float over a slow pad. Regions have their own sounds that crossfade as you walk: crickets in the wheat and orchards, running water along the river, wind on the windmill hills, birds at dawn.
-- **Time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn or dusk), and the sky drifts into a different one every few screens as you wander. The current mood shows in the HUD.
-- **Postcards** (`S`): saving renders a postcard with the painting, its title and number, sky, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
+- **Sky and time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn, dusk, daylight, ember or aurora), and the sky drifts into a different one every few screens as you wander. In daylight the stars go out and the moon becomes a sun. Skies also differ in temperament: calm, classic or turbulent. The current mood and season show in the HUD.
+- **Seasons and weather**: every night is in summer, spring (almond blossom and drifting petals), autumn (rust-coloured trees and falling leaves) or winter (snow on the ground and falling snow). Storms bring rain.
+- **Postcards** (`S`): a dialog lets you pick a design (classic, museum, airmail or polaroid) and write a message in handwriting, with a live preview. The card carries the painting, its title and number, sky, season, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
 - **Foreground tree**: each seed picks a different silhouette for the big cypress on the near side of the gallery painting.
 
 ## On phones
