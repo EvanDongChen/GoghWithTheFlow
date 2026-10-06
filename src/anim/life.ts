@@ -267,8 +267,11 @@ export class Life {
       ctx.stroke();
     }
 
-    // Arcs of paint circling each star and moon.
+    // Arcs of paint circling each star and moon. They live above the baked painting, so any stretch
+    // that would fall on a cypress is left out: the tree stays in front of the sky.
     for (const g of glows) {
+      const trees = this.world.near(World.chunkOf(g.x)).cypresses;
+      const behindTree = (x: number, y: number) => trees.some((c) => cypressCovers(c, this.world.noise, x, y, 3));
       const rings = g.kind === 'moon' ? 6 : 4, ph = (g.id % 1000) / 159;
       for (let i = 0; i < rings; i++) {
         const r = g.core * 1.15 + (i + 0.5) * ((g.halo - g.core * 1.15) / rings);
@@ -277,8 +280,15 @@ export class Life {
           const a = ph * (i + 1) + j * Math.PI + this.t * speed;
           ctx.strokeStyle = css(STAR_ARC[(i + j + g.id) % STAR_ARC.length], 0.55);
           ctx.lineWidth = Math.max(2, g.ringW * 0.75) * k;
+          const span = 0.9 + 0.3 * Math.sin(this.t * 0.7 + i), steps = Math.max(4, Math.ceil((span * r) / 7));
           ctx.beginPath();
-          ctx.arc(sx(g.x), g.y * k, r * k, a, a + 0.9 + 0.3 * Math.sin(this.t * 0.7 + i));
+          let pen = false;
+          for (let s = 0; s <= steps; s++) {
+            const ang = a + (span * s) / steps, px = g.x + Math.cos(ang) * r, py = g.y + Math.sin(ang) * r;
+            if (trees.length && behindTree(px, py)) { pen = false; continue; }
+            if (pen) ctx.lineTo(sx(px), py * k);
+            else { ctx.moveTo(sx(px), py * k); pen = true; }
+          }
           ctx.stroke();
         }
       }
@@ -288,6 +298,7 @@ export class Life {
 
     // Breathing cores.
     for (const g of glows) {
+      if (this.world.near(World.chunkOf(g.x)).cypresses.some((c) => cypressCovers(c, this.world.noise, g.x, g.y, 0))) continue;
       const moon = g.kind === 'moon', ph = g.id % 97;
       const pulse = 0.5 + 0.5 * Math.sin(this.t * (moon ? 0.8 : 1.6 + (ph % 7) * 0.15) + ph);
       const R = (moon ? g.core * 2.4 : g.core * 2.6) * (0.9 + 0.2 * pulse) * k;
