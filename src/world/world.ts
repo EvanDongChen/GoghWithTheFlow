@@ -53,7 +53,7 @@ const CLASSIC = {
 };
 
 export type GlowKind = 'star' | 'moon';
-export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill' | 'sunflower' | 'crows';
+export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill' | 'sunflower' | 'stormfield';
 export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk' | 'day' | 'ember' | 'aurora';
 export type Season = 'summer' | 'spring' | 'autumn' | 'winter';
 /** What falls from the sky: rain, snow, blossom petals or autumn leaves. */
@@ -68,7 +68,7 @@ export type SkyStyle = 'calm' | 'classic' | 'turbulent';
 export type SkyForm = 'classic' | 'waves' | 'great' | 'triple' | 'diagonal' | 'cloudy';
 /** How the sky is painted: fine short dabs, the usual strokes, or bold long ribbons. */
 export type SkyBrush = 'fine' | 'classic' | 'bold';
-export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe' | 'sunflowers' | 'crows';
+export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe' | 'sunflowers';
 export type MoonPhase = 'crescent' | 'half' | 'full';
 
 export interface Vortex { x: number; y: number; R: number; dir: number; }
@@ -112,26 +112,24 @@ export interface Tree { id: number; x: number; y: number; r: number; kind: TreeK
 export interface Mill { id: number; x: number; y: number; h: number; w: number; sail: number; ph: number; speed: number; warm: boolean; }
 export interface Haystack { id: number; x: number; y: number; w: number; h: number; }
 export interface Lamp { id: number; x: number; y: number; h: number; }
-/** A crow circling over the wheat. Its flight is drawn by the animation layer, around (x, y). */
-export interface Crow { id: number; x: number; y: number; size: number; ph: number; speed: number; loop: number; }
 export interface Boat { id: number; x: number; y: number; w: number; dir: 1 | -1; hue: number; }
 
 interface SkyMajor { moon?: Glow; vortices: Vortex[]; cypress?: Cypress; }
 interface Village {
   houses: House[]; churches: Church[]; trees: Tree[];
-  mills: Mill[]; stacks: Haystack[]; lamps: Lamp[]; boats: Boat[]; crows: Crow[];
+  mills: Mill[]; stacks: Haystack[]; lamps: Lamp[]; boats: Boat[];
 }
 
 export interface Nearby extends Village {
   vortices: Vortex[]; glows: Glow[]; cypresses: Cypress[];
 }
 
-const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mills: [], stacks: [], lamps: [], boats: [], crows: [] });
+const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mills: [], stacks: [], lamps: [], boats: [] });
 
 /** Regions are a few screens wide; region 0 holds the classic frame. */
 const REGION = 3000;
 const REGION0 = -750;
-const BIOMES: readonly [Biome, number][] = [['village', 0.22], ['wheat', 0.14], ['river', 0.17], ['orchard', 0.12], ['mill', 0.11], ['sunflower', 0.12], ['crows', 0.12]];
+const BIOMES: readonly [Biome, number][] = [['village', 0.22], ['wheat', 0.14], ['river', 0.17], ['orchard', 0.12], ['mill', 0.11], ['sunflower', 0.12], ['stormfield', 0.12]];
 const MOODS: readonly [Mood, number][] = [['classic', 0.22], ['indigo', 0.09], ['teal', 0.08], ['violet', 0.08], ['storm', 0.1], ['dawn', 0.11], ['dusk', 0.11], ['day', 0.09], ['ember', 0.06], ['aurora', 0.06]];
 const SEASONS: readonly [Season, number][] = [['summer', 0.34], ['spring', 0.22], ['autumn', 0.22], ['winter', 0.22]];
 const SKY_FORMS: readonly [SkyForm, number][] = [['classic', 0.22], ['waves', 0.15], ['great', 0.16], ['triple', 0.16], ['diagonal', 0.15], ['cloudy', 0.16]];
@@ -158,8 +156,8 @@ export const GRADES: Record<Mood, Grade> = {
   ember: { to: [206, 72, 50], t: 0.4, dark: 0.12, lift: 0, day: 0 },
   aurora: { to: [44, 176, 132], t: 0.3, dark: 0.08, lift: 0, day: 0 },
 };
-/** The heavy, cold grade over fields of crows, darker than an ordinary stormy night. */
-const CROW_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0, day: 0 };
+/** The heavy, cold grade over wheat under a storm, darker than an ordinary stormy night. */
+const STORMFIELD_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0, day: 0 };
 export const MOOD_NAMES: Record<Mood, string> = {
   classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk', day: 'Daylight', ember: 'Ember sky', aurora: 'Aurora night',
 };
@@ -175,7 +173,7 @@ function mixGrade(a: Grade, b: Grade, t: number): Grade {
     t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t), day: lerp(a.day, b.day, t),
   };
 }
-const LANDMARKS: readonly [Landmark, number][] = [['none', 0.22], ['mill', 0.15], ['river', 0.17], ['haystacks', 0.13], ['cafe', 0.11], ['sunflowers', 0.11], ['crows', 0.11]];
+const LANDMARKS: readonly [Landmark, number][] = [['none', 0.27], ['mill', 0.15], ['river', 0.17], ['haystacks', 0.19], ['cafe', 0.11], ['sunflowers', 0.11]];
 
 function weighted<T>(table: readonly [T, number][], u: number): T {
   for (const [v, w] of table) { if (u < w) return v; u -= w; }
@@ -272,8 +270,6 @@ export class World {
     this.skyBrush = weighted(SKY_BRUSHES, hashFloat(this.s, 966));
     this.skySlant = hashFloat(this.s, 967) < 0.5 ? 1 : -1;
     this.foreground = weighted(FOREGROUNDS, hashFloat(this.s, 968));
-    // Crows come with weather: most nights that feature them are stormy.
-    if (this.landmark === 'crows' && r.chance(0.65)) this.mood = 'storm';
     this.moodCache.set(0, this.mood);
     this.classic = {
       band: new Sampled(this.C.band, j(1, 0.03)),
@@ -363,9 +359,9 @@ export class World {
     return { k, u: f - k };
   }
 
-  /** The mood that dominates at x. Fields of crows lie under their own storm. */
+  /** The mood that dominates at x. Storm fields lie under their own storm. */
   moodAt(x: number): Mood {
-    if (this.biomeWeight(x, 'crows') > 0.5) return 'storm';
+    if (this.biomeWeight(x, 'stormfield') > 0.5) return 'storm';
     const { k, u } = this.zoneAt(x);
     return this.moodOf(u < 0.05 ? k - 1 : u > 0.95 ? k + 1 : k);
   }
@@ -376,8 +372,8 @@ export class World {
     const base = u < 0.2 ? mixGrade(GRADES[this.moodOf(k - 1)], GRADES[this.moodOf(k)], smoothstep(-0.2, 0.2, u))
       : u > 0.8 ? mixGrade(GRADES[this.moodOf(k)], GRADES[this.moodOf(k + 1)], smoothstep(0.8, 1.2, u))
       : GRADES[this.moodOf(k)];
-    const crows = this.biomeWeight(x, 'crows');
-    return crows > 0.01 ? mixGrade(base, CROW_SKY, crows) : base;
+    const storm = this.biomeWeight(x, 'stormfield');
+    return storm > 0.01 ? mixGrade(base, STORMFIELD_SKY, storm) : base;
   }
 
   /** Whether it is bright enough at x that the stars are out of sight. */
@@ -465,8 +461,8 @@ export class World {
   /** How much of the ground at x is wheat field: wheat and mill regions, or the haystack landmark. */
   wheatWeight(x: number): number {
     const f = this.fx(x / FRAME_W);
-    const classic = this.landmark === 'haystacks' || this.landmark === 'crows' ? 0.85 * this.classicWeight(x) * smoothstep(0.3, 0.46, f) * (1 - smoothstep(0.62, 0.78, f)) : 0;
-    return Math.max(classic, this.biomeWeight(x, 'wheat'), this.biomeWeight(x, 'crows'), 0.6 * this.biomeWeight(x, 'mill'));
+    const classic = this.landmark === 'haystacks' ? 0.85 * this.classicWeight(x) * smoothstep(0.3, 0.46, f) * (1 - smoothstep(0.62, 0.78, f)) : 0;
+    return Math.max(classic, this.biomeWeight(x, 'wheat'), this.biomeWeight(x, 'stormfield'), 0.6 * this.biomeWeight(x, 'mill'));
   }
 
   /** How much sunflower field there is at x: sunflower regions, or the sunflower landmark in the frame. */
@@ -476,11 +472,9 @@ export class World {
     return Math.max(classic, this.biomeWeight(x, 'sunflower'));
   }
 
-  /** How much of the wheat at x lies under the crows' storm: crow regions, or the crow landmark. */
-  crowsWeight(x: number): number {
-    const f = this.fx(x / FRAME_W);
-    const classic = this.landmark === 'crows' ? 0.9 * this.classicWeight(x) * smoothstep(0.3, 0.46, f) * (1 - smoothstep(0.62, 0.78, f)) : 0;
-    return Math.max(classic, this.biomeWeight(x, 'crows'));
+  /** How much of the wheat at x lies under a storm, after *Wheatfield with Crows* (without the crows). */
+  stormFieldWeight(x: number): number {
+    return this.biomeWeight(x, 'stormfield');
   }
 
   /** Centre line of the river, as a depth into the valley. */
@@ -882,14 +876,6 @@ export class World {
         v.trees.push({ id: hash(this.s, c, 55, j), x, y, r: H * r.range(0.02, 0.032) * lerp(0.75, 1.45, t), kind: 'sunflower' });
       }
     }
-    if (lm === 'crows') {
-      const [a, b] = span(0.42, 1.0);
-      this.addStacks(v, r, c, r.int(2, 4), () => r.range(a, b), () => r.range(0.55, 0.85), blocked);
-      for (let k = 0, n = r.int(6, 9); k < n; k++) {
-        const x = r.range(a, b), y = H * r.range(0.3, 0.55);
-        v.crows.push({ id: hash(this.s, c, 56, k), x, y, size: H * r.range(0.021, 0.031), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.2) });
-      }
-    }
     if (lm === 'cafe') {
       const x = cx + (this.flipped ? -1 : 1) * FRAME_W * r.range(0.05, 0.1);
       v.houses.push(this.makeHouse(r, hash(this.s, c, 50), x, this.depthY(x, 0.55), H * 0.042, 'cafe'));
@@ -1014,15 +1000,11 @@ export class World {
       }, blocked);
       this.addStacks(v, r, c, r.int(0, 2), anyX, () => r.range(0.25, 0.5), blocked);
       scatter(r.int(1, 3), [['poplar', 0.5], ['round', 0.3], ['pine', 0.2]], 0.05, 0.4);
-    } else if (biome === 'crows') {
-      // Wheat under a storm, with a lone cypress or poplar and a flock circling overhead.
+    } else if (biome === 'stormfield') {
+      // Wheat under a storm, with a lone cypress or poplar.
       this.addStacks(v, r, c, r.int(0, 2), anyX, () => r.range(0.3, 0.8), blocked);
       scatter(r.int(0, 2), [['poplar', 0.7], ['pine', 0.3]], 0.05, 0.5);
       this.foregroundPlants(v, r, c, x0, x1, r.int(0, 2), blocked);
-      for (let k = 0, n = r.int(5, 11); k < n; k++) {
-        const x = anyX(), y = H * r.range(0.12, 0.5);
-        v.crows.push({ id: hash(this.s, c, 54, k), x, y, size: H * r.range(0.021, 0.033), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.4) });
-      }
     } else {
       // Windmill hills: one or two mills on the ridge, a hamlet and a few haystacks.
       for (let k = 0, n = r.int(1, 2); k < n; k++) {
@@ -1058,7 +1040,6 @@ export class World {
       n.stacks.push(...vil.stacks);
       n.lamps.push(...vil.lamps);
       n.boats.push(...vil.boats);
-      n.crows.push(...vil.crows);
     }
     this.nearCache.set(c, n);
     return n;

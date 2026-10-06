@@ -42,7 +42,6 @@ const P = palette({
   sunPetalLit: ['#fbe88a', '#fff0a0'],
   sunCore: ['#3a2412', '#4a3018', '#2c1a0e', '#5a3c1c'],
   sunStem: ['#3e5a2c', '#4a6a34', '#2e4a26', '#58763c'],
-  crow: ['#0c0e14', '#14161e', '#1a1c26', '#080a10'],
 });
 
 type Poly = Pt[];
@@ -322,48 +321,6 @@ function drawSunflower(ctx: Ctx, rng: Rng, t: Tree) {
     const a = rng.range(0, TAU), rr = Math.sqrt(rng.random()) * 0.4, x = hx + Math.cos(a) * R * rr, y = hy + Math.sin(a) * R * rr * 0.9;
     stroke(ctx, rng, [[x - 1.5, y], [x + 1.5, y + rng.range(-0.6, 0.6)]], rng.range(2.6, 3.8), jitter(rng.pick(P.sunCore), rng, 12));
   }
-}
-
-/**
- * A crow in flight facing right, wings raised by `flap` (-1..1), laid on with the impasto brush: a leading-edge
- * sweep, then overlapping feather strokes, a plump body, a fanned tail and a dark dab of head. It is painted once
- * per pose into a sprite by the animation layer (which adds the canvas grain), so it looks like the paint around it.
- */
-export function paintCrow(ctx: Ctx, rng: Rng, s: number, flap: number) {
-  const ink = (): RGB => {
-    // Mostly blue-black, with the odd warm brown, as in the crows of Van Gogh's last wheatfield.
-    const u = rng.random();
-    return jitter(u < 0.7 ? rng.pick(P.crow) : u < 0.88 ? [30, 38, 66] : [56, 42, 34], rng, 12);
-  };
-  const sheen: RGB = [70, 84, 120];
-  for (const side of [-1, 1]) {
-    const rx = side * s * 0.1, ry = -s * 0.06;
-    const tip: Pt = [side * s * 1.3, -flap * s * 0.8 - s * 0.1];
-    const ctrl: Pt = [side * s * 0.62, -flap * s * 0.55 - s * 0.6];
-    const lead = (t: number): Pt => [(1 - t) * (1 - t) * rx + 2 * (1 - t) * t * ctrl[0] + t * t * tip[0], (1 - t) * (1 - t) * ry + 2 * (1 - t) * t * ctrl[1] + t * t * tip[1]];
-    // The wing is built from sweeping strokes that run root to tip, stacked from the trailing edge up to the
-    // leading edge: shorter and lower toward the back, so the blade tapers to a point.
-    const hang = s * 0.34 + flap * s * 0.1;
-    for (let k = 4; k >= 1; k--) {
-      const f = k / 4, [mx, my] = lead(0.5 - f * 0.12), [ex, ey] = lead(1 - f * 0.34);
-      stroke(ctx, rng, [[rx, ry + f * s * 0.14], [mx, my + f * hang * 0.55], [ex, ey + f * hang * 0.8]], s * rng.range(0.16, 0.2), ink());
-    }
-    // Primaries: three short fingers fanning from the tip.
-    for (const [dx, dy] of [[0.14, 0.04], [0.05, 0.2], [-0.08, 0.3]]) {
-      const [bx, by] = lead(0.82);
-      stroke(ctx, rng, [[bx, by + s * 0.1], [lerp(bx, tip[0], 0.7), lerp(by, tip[1], 0.7) + s * dy * 0.6], [tip[0] + side * s * dx, tip[1] + s * dy]], s * 0.1, ink());
-    }
-    // The leading edge itself, and a streak of sheen along it.
-    stroke(ctx, rng, [lead(0.05), lead(0.45), lead(0.97)], s * 0.2, ink());
-    stroke(ctx, rng, [lead(0.2), lead(0.5), lead(0.8)].map(([x, y]) => [x, y - s * 0.03] as Pt), Math.max(1.5, s * 0.06), sheen);
-  }
-  // The body, its sheen, the tail and the head.
-  stroke(ctx, rng, [[-s * 0.42, s * 0.02], [0, s * 0.01], [s * 0.4, -s * 0.03]], s * 0.36, ink());
-  stroke(ctx, rng, [[-s * 0.3, -s * 0.07], [s * 0.05, -s * 0.09], [s * 0.34, -s * 0.1]], Math.max(1.5, s * 0.07), sheen);
-  stroke(ctx, rng, [[-s * 0.36, 0], [-s * 0.7, s * 0.08], [-s * 0.98, s * 0.16]], s * 0.15, ink());
-  stroke(ctx, rng, [[-s * 0.36, -s * 0.02], [-s * 0.7, -s * 0.02], [-s * 0.95, 0]], s * 0.13, ink());
-  stroke(ctx, rng, [[s * 0.44, -s * 0.07], [s * 0.54, -s * 0.09]], s * 0.26, ink());
-  stroke(ctx, rng, [[s * 0.6, -s * 0.07], [s * 0.82, -s * 0.03]], s * 0.1, P.crow[2]);
 }
 
 function drawGnarled(ctx: Ctx, rng: Rng, t: Tree, season: Season) {

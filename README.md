@@ -22,14 +22,14 @@ An endless *Starry Night*, procedurally painted stroke by stroke. It takes its s
   - **olive orchards** planted in rows;
   - **windmill hills**, whose sails turn when the painting is alive;
   - **sunflower fields**, after the *Sunflowers* series, where bees drone among the heads;
-  - **wheat under a storm**, after *Wheatfield with Crows*, with a heavy sky and crows circling and calling.
+  - **wheat under a storm**, after *Wheatfield with Crows*, with a heavy, cold sky and the wind in the wheat.
 
   Umbrella pines, poplars, irises and boats turn up along the way. Each stretch is painted just ahead of you.
 
 **Every seed is different.** Each one picks a sky mood (classic, indigo, teal, violet or
 stormy), a moon phase (crescent, half or full) and an order of regions. It also gets a season and a sky temperament. The gallery painting may
 be mirrored, its stars and swirls shift, and it gets a landmark: a windmill on the hills, a
-gaslit river, haystacks, a lit café, sunflowers in the foreground, or crows circling over the wheat (usually under a storm).
+gaslit river, haystacks, a lit café, or sunflowers in the foreground.
 
 Turn on **life** (on by default) and the painting moves. Brush strokes stream along the same
 currents that painted the sky, halos of paint circle the stars, the moon breathes, windows
@@ -44,6 +44,7 @@ your friend sees exactly your night.
 - **Sky and time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn, dusk, daylight, ember or aurora), and the sky drifts into a different one every few screens as you wander. In daylight the stars go out and the moon becomes a sun. Skies also differ in composition (the original two swirls, rolling waves, one great spiral, three spirals, a diagonal stream or a churn of small whorls), in temperament (calm, classic or turbulent) and in brushwork (fine dabs, the usual strokes or bold ribbons). The current mood and season show in the HUD.
 - **Seasons and weather**: every night is in summer, spring (almond blossom and drifting petals), autumn (rust-coloured trees and falling leaves) or winter (snow on the ground and falling snow). Weather is rare: only about one stretch in six has anything falling, and it is rain, snow, petals or leaves to suit the season.
 - **Postcards** (`S`): a dialog lets you pick a design (classic, museum, airmail or polaroid) and write a message in handwriting, with a live preview. The card carries the painting, its title and number, sky, season, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
+- **Stir the painting** (`B`, optional): in the sky your cursor drags the streaming brushstrokes into eddies and leaves a trail of fresh paint, and stars flare as you pass. Over the land it picks up the paint underneath (wheat, hills, roofs, trees) and smears it along your path; on the river it spreads ripples; windows and gaslights brighten, and brushing a windmill spins its sails. A click splashes the paint under it (with a note, if the soundtrack is on). On a phone, drag across the painting.
 - **Foreground**: the near side of the gallery painting is a cypress about two nights in three (in one of several shapes). The rest have an open village, umbrella pines, a row of poplars or a gnarled old olive.
 
 ## On phones
@@ -76,6 +77,7 @@ Source: GitHub Actions**. After that, every push to `main` publishes the site to
 | `I` | About |
 | `Space` | Pause or resume drifting |
 | `←` `→`, drag, scroll | Walk through the night |
+| `B` | Stir the painting with your cursor (click for a splash of paint) |
 | `M` | Play / mute the soundtrack |
 | `S` | Save a postcard (`Shift+S`: plain PNG) |
 | `F` | Fullscreen |

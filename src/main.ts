@@ -23,10 +23,10 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 const pretty = (seed: string) => seed.replace(/-/g, ' ');
 
 const REGION_NAMES: Record<Biome, string> = {
-  village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills', sunflower: 'A field of sunflowers', crows: 'Wheat under a stormy sky, with crows',
+  village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills', sunflower: 'A field of sunflowers', stormfield: 'Wheat under a stormy sky',
 };
 const LANDMARK_NAMES: Record<Landmark, string> = {
-  none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace', sunflowers: 'Sunflowers in the foreground', crows: 'Crows over the wheat',
+  none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace', sunflowers: 'Sunflowers in the foreground',
 };
 const PRECIP_NAMES = { rain: 'rain falling', snow: 'snow falling', petals: 'blossom on the wind', leaves: 'leaves on the wind' };
 const MOON_NAMES = { crescent: 'Crescent moon', half: 'Half moon', full: 'Full moon' };
@@ -42,6 +42,12 @@ class App {
   private playBtn = $('btn-play');
   private animBtn = $('btn-anim');
   private soundBtn = $('btn-sound');
+  private stirBtn = $('btn-stir');
+  private stirring = false;
+  /** The last pointer position on screen, for stir mode, and where it was on the previous frame. */
+  private client: { x: number; y: number; px: number; py: number } | null = null;
+  private downX = 0;
+  private downY = 0;
   private music = new Music();
   private about = $('about');
   private toastEl = $('toast');
@@ -86,6 +92,7 @@ class App {
     this.setPlaying(this.playing);
     this.setAnimating(this.animating);
     this.setSound(false);
+    try { if (localStorage.getItem('gogh-stir') === '1') this.setStirring(true); } catch { /* ignore */ }
     this.onSpeed();
     this.resize();
     requestAnimationFrame((t) => this.loop(t));
@@ -98,6 +105,8 @@ class App {
     this.world = new World(seed);
     this.pool = new ChunkPool(seed, this.renderScale, () => { this.dirty = true; });
     this.life = new Life(this.world);
+    this.life.stir = this.stirring;
+    this.life.sample = (x, y) => this.samplePaint(x, y);
     this.music.setWorld(this.world);
     this.camX = 0;
     this.vel = 0;
@@ -136,6 +145,62 @@ class App {
     this.animBtn.classList.toggle('active', on);
     this.animBtn.setAttribute('aria-pressed', String(on));
     this.animBtn.title = on ? 'Still the painting (A)' : 'Bring the painting to life (A)';
+  }
+
+  private setStirring(on: boolean) {
+    this.stirring = on;
+    this.life.stir = on;
+    if (!on) this.life.pointerOut();
+    // Stirring needs the living layer.
+    if (on && !this.animating) this.setAnimating(true);
+    this.app.classList.toggle('stirring', on);
+    this.stirBtn.classList.toggle('active', on);
+    this.stirBtn.setAttribute('aria-pressed', String(on));
+    this.stirBtn.title = on ? 'Stop stirring (B)' : 'Stir the painting with your cursor (B)';
+    try { localStorage.setItem('gogh-stir', on ? '1' : '0'); } catch { /* private mode */ }
+  }
+
+  /** A screen point in world units, and how many world units one screen pixel spans; null if it is off the painting. */
+  private toWorld(cx: number, cy: number): [number, number, number] | null {
+    if (this.mode === 'gallery') {
+      const r = this.galleryCanvas.getBoundingClientRect();
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return null;
+      const u = FRAME_W / r.width;
+      return [(cx - r.left) * u, (cy - r.top) * u, u];
+    }
+    const u = this.wanderCanvas.width / innerWidth / this.viewScale;
+    return [this.camX + cx * u, cy * u, u];
+  }
+
+  /** Feed the cursor to the living layer once a frame, as a velocity relative to the screen (so walking is not stirring). */
+  private updateStir(dt: number) {
+    const c = this.client;
+    if (!this.stirring || !c || this.dragging) return;
+    const w = this.toWorld(c.x, c.y);
+    if (!w) { this.life.pointerOut(); c.px = c.x; c.py = c.y; return; }
+    const d = Math.max(dt, 1 / 240);
+    this.life.pointer(w[0], w[1], ((c.x - c.px) * w[2]) / d, ((c.y - c.py) * w[2]) / d);
+    c.px = c.x;
+    c.py = c.y;
+  }
+
+  /** The painted colour at a world point, read from its chunk's image. */
+  private samplePaint(x: number, y: number): [number, number, number] | null {
+    const c = World.chunkOf(x), img = this.pool.get(c)?.image;
+    if (!img || y < 0 || y >= H) return null;
+    const s = this.pool.scale, px = Math.floor((x - c * CW) * s), py = Math.floor(y * s);
+    if (px < 0 || px >= img.width || py < 0 || py >= img.height) return null;
+    const d = img.getContext('2d')!.getImageData(px, py, 1, 1).data;
+    return d[3] ? [d[0], d[1], d[2]] : null;
+  }
+
+  private stirBurst(e: PointerEvent) {
+    if (!this.stirring || Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > 6) return false;
+    const w = this.toWorld(e.clientX, e.clientY);
+    if (!w) return false;
+    this.life.burst(w[0], w[1]);
+    this.music.sparkle();
+    return true;
   }
 
   private async setSound(on: boolean) {
@@ -217,6 +282,7 @@ class App {
     const view: View = this.mode === 'gallery'
       ? { x0: 0, x1: FRAME_W, scale: this.galleryCanvas.width / FRAME_W, offsetX: 0 }
       : { x0: this.camX, x1: this.camX + this.viewW, scale: this.viewScale, offsetX: 0 };
+    this.updateStir(dt);
     if (this.animating) this.life.update(dt, view);
 
     if (this.dirty || this.animating) {
@@ -498,6 +564,16 @@ class App {
     $('btn-about').onclick = (e) => { e.stopPropagation(); this.toggleAbout(); };
     $('about-close').onclick = () => this.toggleAbout(false);
     this.animBtn.onclick = () => this.setAnimating(!this.animating);
+    this.stirBtn.onclick = () => this.setStirring(!this.stirring);
+    addEventListener('pointermove', (e) => {
+      if (!this.stirring) return;
+      if (this.client) { this.client.x = e.clientX; this.client.y = e.clientY; }
+      else this.client = { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY };
+    });
+    addEventListener('pointerdown', (e) => { this.downX = e.clientX; this.downY = e.clientY; }, true);
+    const leave = () => { this.client = null; this.life.pointerOut(); };
+    document.addEventListener('pointerleave', leave);
+    addEventListener('pointerup', (e) => { if (e.pointerType === 'touch') leave(); });
     this.soundBtn.onclick = () => this.setSound(!this.music.on);
     this.playBtn.onclick = () => this.setPlaying(!this.playing);
     this.speedInput.oninput = () => this.onSpeed();
@@ -518,6 +594,9 @@ class App {
     let sx = 0, sy = 0, st = 0;
     gallery.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; st = performance.now(); });
     gallery.addEventListener('pointerup', (e) => {
+      if (this.stirBurst(e)) return;
+      // While stirring, a drag across the painting stirs it rather than stepping inside.
+      if (this.stirring) return;
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (this.mode !== 'gallery' || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       this.setMode('wander');
@@ -544,8 +623,9 @@ class App {
       this.lastX = e.clientX;
       this.lastT = now;
     });
-    const end = () => {
+    const end = (e: PointerEvent) => {
       if (!this.dragging) return;
+      this.stirBurst(e);
       this.dragging = false;
       c.classList.remove('dragging');
       if (performance.now() - this.lastT > 80) this.vel = 0;
@@ -570,6 +650,7 @@ class App {
       else if (k === 's') { if (e.shiftKey) this.savePlain(); else this.openCard(); }
       else if (k === 'm') this.setSound(!this.music.on);
       else if (k === 'a') this.setAnimating(!this.animating);
+      else if (k === 'b') this.setStirring(!this.stirring);
       else if (k === 'c') this.share();
       else if (k === 'f') this.toggleFullscreen();
       else if (k === '?' || k === 'i') this.toggleAbout();
