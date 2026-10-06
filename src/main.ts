@@ -1,7 +1,9 @@
 import { Life, type View } from './anim/life';
+import { Music } from './audio/music';
 import { clamp } from './core/math';
 import { ChunkPool } from './paint/pool';
-import { CW, FRAME_W, H, World } from './world/world';
+import { renderPostcard } from './postcard';
+import { CW, FRAME_W, H, MOOD_NAMES, World, type Biome, type Landmark } from './world/world';
 
 type Mode = 'gallery' | 'wander';
 
@@ -18,6 +20,14 @@ function randomSeed(): string {
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pretty = (seed: string) => seed.replace(/-/g, ' ');
 
+const REGION_NAMES: Record<Biome, string> = {
+  village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills',
+};
+const LANDMARK_NAMES: Record<Landmark, string> = {
+  none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace',
+};
+const MOON_NAMES = { crescent: 'Crescent moon', half: 'Half moon', full: 'Full moon' };
+
 class App {
   private app = $('app');
   private wanderCanvas = $<HTMLCanvasElement>('wander-canvas');
@@ -28,6 +38,8 @@ class App {
   private speedInput = $<HTMLInputElement>('speed');
   private playBtn = $('btn-play');
   private animBtn = $('btn-anim');
+  private soundBtn = $('btn-sound');
+  private music = new Music();
   private about = $('about');
   private toastEl = $('toast');
 
@@ -50,6 +62,7 @@ class App {
   private lastFrame = 0;
   private toastTimer = 0;
   private dirty = true;
+  private lastScene = 0;
 
   constructor() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -67,6 +80,7 @@ class App {
     this.setMode(params.get('mode') === 'wander' ? 'wander' : 'gallery');
     this.setPlaying(this.playing);
     this.setAnimating(this.animating);
+    this.setSound(false);
     this.onSpeed();
     this.resize();
     requestAnimationFrame((t) => this.loop(t));
@@ -79,6 +93,7 @@ class App {
     this.world = new World(seed);
     this.pool = new ChunkPool(seed, this.renderScale, () => { this.dirty = true; });
     this.life = new Life(this.world);
+    this.music.setWorld(this.world);
     this.camX = 0;
     this.vel = 0;
     this.dirty = true;
@@ -116,6 +131,20 @@ class App {
     this.animBtn.classList.toggle('active', on);
     this.animBtn.setAttribute('aria-pressed', String(on));
     this.animBtn.title = on ? 'Still the painting (A)' : 'Bring the painting to life (A)';
+  }
+
+  private async setSound(on: boolean) {
+    try {
+      await this.music.setEnabled(on);
+    } catch {
+      this.toast('Sound is not available here');
+      on = false;
+    }
+    this.soundBtn.classList.toggle('active', on);
+    this.soundBtn.classList.toggle('muted', !on);
+    this.soundBtn.setAttribute('aria-pressed', String(on));
+    this.soundBtn.title = on ? 'Mute (M)' : 'Play the soundtrack (M)';
+    this.soundBtn.setAttribute('aria-label', on ? 'Mute the soundtrack' : 'Play the soundtrack');
   }
 
   private syncUrl() {
@@ -159,6 +188,14 @@ class App {
       this.vel *= Math.exp(-dt * 2.5);
       if (Math.abs(this.vel) < 1) this.vel = 0;
       if (this.camX !== before) this.dirty = true;
+    }
+
+    const sceneX = this.mode === 'gallery' ? FRAME_W / 2 : this.camX + this.viewW / 2;
+    if (t - this.lastScene > 400) {
+      this.lastScene = t;
+      this.music.setScene({ x: sceneX, mode: this.mode });
+      const mood = MOOD_NAMES[this.world.moodAt(sceneX)], el = $('hud-mood');
+      if (el.textContent !== mood) el.textContent = mood;
     }
 
     const wanted = this.wanted();
@@ -244,19 +281,25 @@ class App {
 
   // ------------------------------------------------------------ actions
 
-  private save() {
+  /** The visible painting, composed from its chunks, plus where it sits in the world. */
+  private compose() {
     const s = this.pool.scale, out = document.createElement('canvas');
     const x0 = this.mode === 'gallery' ? 0 : this.camX, w = this.mode === 'gallery' ? FRAME_W : this.viewW;
     out.width = Math.round(w * s);
     out.height = this.pool.chunkPy;
     const ctx = out.getContext('2d')!;
+    let strokes = 0;
     for (let c = World.chunkOf(x0); c <= World.chunkOf(x0 + w); c++) {
-      const img = this.pool.get(c)?.image;
-      if (img) ctx.drawImage(img, Math.round((c * CW - x0) * s), 0);
+      const ch = this.pool.get(c);
+      if (ch?.image) ctx.drawImage(ch.image, Math.round((c * CW - x0) * s), 0);
+      strokes += ch?.strokes ?? 0;
     }
     this.life.drawStatic(ctx, { x0, x1: x0 + w, scale: s, offsetX: 0 });
-    const name = `starry-night-${this.world.seed}${this.mode === 'wander' ? `-${Math.round(this.camX)}` : ''}.png`;
-    out.toBlob((blob) => {
+    return { out, x0, w, strokes };
+  }
+
+  private download(canvas: HTMLCanvasElement, name: string) {
+    canvas.toBlob((blob) => {
       if (!blob) return;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -265,6 +308,29 @@ class App {
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       this.toast('Saved to your downloads');
     }, 'image/png');
+  }
+
+  /** Save the view as a postcard carrying the same details as the gallery placard. */
+  private async save(plain = false) {
+    const { out, x0, w, strokes } = this.compose(), wander = this.mode === 'wander', wd = this.world;
+    const mid = x0 + w / 2, suffix = wander ? `-${Math.round(this.camX)}` : '';
+    if (plain) return this.download(out, `starry-night-${wd.seed}${suffix}.png`);
+
+    const moon = wd.near(World.chunkOf(mid)).glows.find((g) => g.kind === 'moon');
+    const details: [string, string][] = [
+      ['Sky', MOOD_NAMES[wd.moodAt(mid)]],
+      ['Moon', moon?.phase ? MOON_NAMES[moon.phase] : 'No moon in view'],
+      [wander ? 'Country' : 'Landmark', wander ? REGION_NAMES[wd.biomeAt(mid)] : LANDMARK_NAMES[wd.landmark]],
+      ['Brushstrokes', strokes ? strokes.toLocaleString() : 'Countless'],
+    ];
+    if (!wander && wd.flipped) details.push(['Composition', 'Mirrored']);
+    this.toast('Printing your postcard…');
+    const card = await renderPostcard({
+      art: out, seed: wd.seed, title: 'The Starry Night', details,
+      lines: ['After Vincent van Gogh', 'Procedural oil on canvas, 2026'],
+      place: wander ? `${(mid / 1000).toFixed(2)} km into the night` : 'The gallery',
+    });
+    this.download(card, `postcard-${wd.seed}${suffix}.png`);
   }
 
   private async share() {
@@ -322,6 +388,7 @@ class App {
     $('btn-about').onclick = (e) => { e.stopPropagation(); this.toggleAbout(); };
     $('about-close').onclick = () => this.toggleAbout(false);
     this.animBtn.onclick = () => this.setAnimating(!this.animating);
+    this.soundBtn.onclick = () => this.setSound(!this.music.on);
     this.playBtn.onclick = () => this.setPlaying(!this.playing);
     this.speedInput.oninput = () => this.onSpeed();
     this.seedInput.onkeydown = (e) => {
@@ -379,7 +446,8 @@ class App {
       if (k === 'g') this.setMode('gallery');
       else if (k === 'w') this.setMode('wander');
       else if (k === 'n') this.newSeed();
-      else if (k === 's') this.save();
+      else if (k === 's') this.save(e.shiftKey);
+      else if (k === 'm') this.setSound(!this.music.on);
       else if (k === 'a') this.setAnimating(!this.animating);
       else if (k === 'c') this.share();
       else if (k === 'f') this.toggleFullscreen();
