@@ -6,8 +6,9 @@ import { fillPoly, stroke, type Ctx, type Pt } from '../core/brush';
 import { darken, jitter, lighten, palette, type RGB } from '../core/color';
 import { lerp, TAU } from '../core/math';
 import { hashFloat, Rng } from '../core/rng';
-import type { Boat, Church, Haystack, House, Lamp, Mill, Tree } from '../world/world';
+import type { Boat, Church, Haystack, House, Lamp, Mill, Season, Tree } from '../world/world';
 import { inPad, L, type ChunkPlan } from './plan';
+import { treeSeason } from './season';
 
 const P = palette({
   wallLight: ['#9fb2c6', '#8ea4bc', '#b4c2c8', '#7d94b0', '#c8cfc8', '#a8b8c0'],
@@ -323,16 +324,69 @@ function drawSunflower(ctx: Ctx, rng: Rng, t: Tree) {
   }
 }
 
-/** A crow in flight, wings raised by `flap` (-1..1), facing `dir`. Used by the animation layer and for stills. */
-export function drawCrow(ctx: Ctx, rng: Rng, x: number, y: number, size: number, flap: number, dir: 1 | -1) {
-  const wing = size * 1.15, lift = flap * size * 0.7;
-  const body: Pt[] = [[x - dir * size * 0.5, y + size * 0.06], [x, y], [x + dir * size * 0.5, y - size * 0.05]];
-  stroke(ctx, rng, body, size * 0.5, jitter(rng.pick(P.crow), rng, 8));
+/**
+ * A crow in flight facing right, wings raised by `flap` (-1..1), laid on with the impasto brush: a leading-edge
+ * sweep, then overlapping feather strokes, a plump body, a fanned tail and a dark dab of head. It is painted once
+ * per pose into a sprite by the animation layer (which adds the canvas grain), so it looks like the paint around it.
+ */
+export function paintCrow(ctx: Ctx, rng: Rng, s: number, flap: number) {
+  const ink = (): RGB => {
+    // Mostly blue-black, with the odd warm brown, as in the crows of Van Gogh's last wheatfield.
+    const u = rng.random();
+    return jitter(u < 0.7 ? rng.pick(P.crow) : u < 0.88 ? [30, 38, 66] : [56, 42, 34], rng, 12);
+  };
+  const sheen: RGB = [70, 84, 120];
   for (const side of [-1, 1]) {
-    const tip: Pt = [x + side * wing, y - lift - size * 0.1], mid: Pt = [x + side * wing * 0.5, y - lift * 0.55 - size * 0.32];
-    stroke(ctx, rng, [[x + side * size * 0.1, y - size * 0.05], mid, tip], size * 0.36, jitter(rng.pick(P.crow), rng, 8));
+    const rx = side * s * 0.1, ry = -s * 0.06;
+    const tip: Pt = [side * s * 1.3, -flap * s * 0.8 - s * 0.1];
+    const ctrl: Pt = [side * s * 0.62, -flap * s * 0.55 - s * 0.6];
+    const lead = (t: number): Pt => [(1 - t) * (1 - t) * rx + 2 * (1 - t) * t * ctrl[0] + t * t * tip[0], (1 - t) * (1 - t) * ry + 2 * (1 - t) * t * ctrl[1] + t * t * tip[1]];
+    // The wing is built from sweeping strokes that run root to tip, stacked from the trailing edge up to the
+    // leading edge: shorter and lower toward the back, so the blade tapers to a point.
+    const hang = s * 0.34 + flap * s * 0.1;
+    for (let k = 4; k >= 1; k--) {
+      const f = k / 4, [mx, my] = lead(0.5 - f * 0.12), [ex, ey] = lead(1 - f * 0.34);
+      stroke(ctx, rng, [[rx, ry + f * s * 0.14], [mx, my + f * hang * 0.55], [ex, ey + f * hang * 0.8]], s * rng.range(0.16, 0.2), ink());
+    }
+    // Primaries: three short fingers fanning from the tip.
+    for (const [dx, dy] of [[0.14, 0.04], [0.05, 0.2], [-0.08, 0.3]]) {
+      const [bx, by] = lead(0.82);
+      stroke(ctx, rng, [[bx, by + s * 0.1], [lerp(bx, tip[0], 0.7), lerp(by, tip[1], 0.7) + s * dy * 0.6], [tip[0] + side * s * dx, tip[1] + s * dy]], s * 0.1, ink());
+    }
+    // The leading edge itself, and a streak of sheen along it.
+    stroke(ctx, rng, [lead(0.05), lead(0.45), lead(0.97)], s * 0.2, ink());
+    stroke(ctx, rng, [lead(0.2), lead(0.5), lead(0.8)].map(([x, y]) => [x, y - s * 0.03] as Pt), Math.max(1.5, s * 0.06), sheen);
   }
-  stroke(ctx, rng, [[x + dir * size * 0.5, y - size * 0.05], [x + dir * size * 0.75, y - size * 0.02]], size * 0.2, P.crow[3]);
+  // The body, its sheen, the tail and the head.
+  stroke(ctx, rng, [[-s * 0.42, s * 0.02], [0, s * 0.01], [s * 0.4, -s * 0.03]], s * 0.36, ink());
+  stroke(ctx, rng, [[-s * 0.3, -s * 0.07], [s * 0.05, -s * 0.09], [s * 0.34, -s * 0.1]], Math.max(1.5, s * 0.07), sheen);
+  stroke(ctx, rng, [[-s * 0.36, 0], [-s * 0.7, s * 0.08], [-s * 0.98, s * 0.16]], s * 0.15, ink());
+  stroke(ctx, rng, [[-s * 0.36, -s * 0.02], [-s * 0.7, -s * 0.02], [-s * 0.95, 0]], s * 0.13, ink());
+  stroke(ctx, rng, [[s * 0.44, -s * 0.07], [s * 0.54, -s * 0.09]], s * 0.26, ink());
+  stroke(ctx, rng, [[s * 0.6, -s * 0.07], [s * 0.82, -s * 0.03]], s * 0.1, P.crow[2]);
+}
+
+function drawGnarled(ctx: Ctx, rng: Rng, t: Tree, season: Season) {
+  // An old olive: a twisted trunk that splits into a few limbs, under a loose, silvery crown with the branches showing through.
+  const pal = treeSeason(season, 'olive', { dark: P.treeDark, mid: P.treeMid, light: P.treeLight });
+  const h = t.r * 2.3, lean = rng.range(-0.3, 0.3), forkY = t.y - h * 0.5, forkX = t.x + lean * t.r * 0.5;
+  for (let i = 0; i < 3; i++) {
+    stroke(ctx, rng, [[t.x + rng.range(-t.r * 0.12, t.r * 0.12), t.y], [t.x + lean * t.r * 0.1 + rng.range(-4, 4), lerp(t.y, forkY, 0.5)], [forkX + rng.range(-3, 3), forkY]], rng.range(7, 10), jitter(rng.pick(P.mill), rng, 12));
+  }
+  const limbs: Pt[] = [[-1.15, -2.15], [-0.45, -2.75], [0.45, -2.6], [1.2, -2.0]].map(([a, b]) => [t.x + (a + lean) * t.r, t.y + b * t.r] as Pt);
+  for (const [lx, ly] of limbs) {
+    stroke(ctx, rng, [[forkX, forkY], [lerp(forkX, lx, 0.5) + rng.range(-6, 6), lerp(forkY, ly, 0.5)], [lx, ly]], rng.range(3.5, 6), jitter(rng.pick(P.mill), rng, 12));
+  }
+  // Clusters of small leaf dabs at the end of each limb: sparse enough that the wood still reads.
+  for (const [lx, ly] of limbs) {
+    const rx = t.r * 0.75, ry = t.r * 0.42, n = Math.round((rx * ry) / 12);
+    for (let i = 0; i < n; i++) {
+      const a = rng.range(0, TAU), rr = Math.sqrt(rng.random()), x = lx + Math.cos(a) * rr * rx, y = ly + Math.sin(a) * rr * ry - ry * 0.3;
+      const lit = -Math.sin(a) * rr + rng.range(-0.6, 0.6), set = lit > 0.35 ? pal.light : lit > -0.3 ? pal.mid : pal.dark;
+      const dir = rng.range(-0.5, 0.5);
+      stroke(ctx, rng, [[x - 6, y - dir * 4], [x, y + rng.range(-1, 1)], [x + 6, y + dir * 4]], rng.range(3, 4.8), jitter(rng.pick(set), rng, 16));
+    }
+  }
 }
 
 function drawIris(ctx: Ctx, rng: Rng, t: Tree) {
@@ -414,13 +468,14 @@ export function millHub(m: Mill): Pt {
   return [m.x, m.y - m.h * 0.92];
 }
 
-function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
+function drawTree(ctx: Ctx, rng: Rng, t: Tree, season: Season) {
   if (t.kind === 'pine') return drawPine(ctx, rng, t);
   if (t.kind === 'iris') return drawIris(ctx, rng, t);
   if (t.kind === 'sunflower') return drawSunflower(ctx, rng, t);
+  if (t.kind === 'gnarled') return drawGnarled(ctx, rng, t, season);
   const poplar = t.kind === 'poplar', olive = t.kind === 'olive';
   const rx = t.r * (poplar ? 0.55 : olive ? 1.25 : 1), ry = t.r * (poplar ? 2.1 : olive ? 0.65 : 0.9), cy = t.y - ry * 0.8;
-  const dark = olive ? P.treeDark : P.bushDark, mid = olive ? P.treeMid : P.bushMid, light = olive ? P.treeLight : P.bushLight;
+  const { dark, mid, light } = treeSeason(season, t.kind, olive ? { dark: P.treeDark, mid: P.treeMid, light: P.treeLight } : { dark: P.bushDark, mid: P.bushMid, light: P.bushLight });
   fillPoly(ctx, blob(rng, t.x, cy, rx, ry), dark[0]);
   const n = Math.round((rx * ry) / 9);
   for (let i = 0; i < n; i++) {
@@ -449,7 +504,7 @@ export function planVillage(p: ChunkPlan) {
   };
   for (const h of houses) add(h.x, h.w + h.depth + 10, h.y, h.id, (ctx, rng) => drawHouse(ctx, rng, h));
   for (const c of churches) add(c.x, c.bodyW + 20, c.base, c.id, (ctx, rng) => drawChurch(ctx, rng, c));
-  for (const t of trees) add(t.x, t.r * (t.kind === 'sunflower' ? 3.4 : 2.2) + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
+  for (const t of trees) add(t.x, t.r * (t.kind === 'sunflower' ? 3.4 : t.kind === 'gnarled' ? 3 : 2.2) + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t, p.world.season));
   for (const m of mills) add(m.x, m.w + 10, m.y, m.id, (ctx, rng) => drawMill(ctx, rng, m));
   for (const s of stacks) add(s.x, s.w + 10, s.y, s.id, (ctx, rng) => drawStack(ctx, rng, s));
   for (const l of lamps) add(l.x, l.h + 10, l.y, l.id, (ctx, rng) => drawLamp(ctx, rng, l));

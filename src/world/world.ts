@@ -54,7 +54,20 @@ const CLASSIC = {
 
 export type GlowKind = 'star' | 'moon';
 export type Biome = 'village' | 'wheat' | 'river' | 'orchard' | 'mill' | 'sunflower' | 'crows';
-export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk';
+export type Mood = 'classic' | 'indigo' | 'teal' | 'violet' | 'storm' | 'dawn' | 'dusk' | 'day' | 'ember' | 'aurora';
+export type Season = 'summer' | 'spring' | 'autumn' | 'winter';
+/** What falls from the sky: rain, snow, blossom petals or autumn leaves. */
+export type Precip = 'rain' | 'snow' | 'petals' | 'leaves';
+/** How restless the sky is: calm skies have fewer eddies and stars, turbulent ones are crowded with them. */
+export type SkyStyle = 'calm' | 'classic' | 'turbulent';
+/**
+ * The composition of the sky: how its flow is organised, not just how it is coloured.
+ * classic: two swirls like the original; waves: long rolling swells and no spirals; great: one huge spiral;
+ * triple: three spirals of different sizes; diagonal: a sky streaming down across the frame; cloudy: many small whorls.
+ */
+export type SkyForm = 'classic' | 'waves' | 'great' | 'triple' | 'diagonal' | 'cloudy';
+/** How the sky is painted: fine short dabs, the usual strokes, or bold long ribbons. */
+export type SkyBrush = 'fine' | 'classic' | 'bold';
 export type Landmark = 'none' | 'mill' | 'river' | 'haystacks' | 'cafe' | 'sunflowers' | 'crows';
 export type MoonPhase = 'crescent' | 'half' | 'full';
 
@@ -90,7 +103,9 @@ export interface Church {
   style: 'spire' | 'tower' | 'dome';
 }
 
-export type TreeKind = 'round' | 'poplar' | 'olive' | 'pine' | 'iris' | 'sunflower';
+export type TreeKind = 'round' | 'poplar' | 'olive' | 'pine' | 'iris' | 'sunflower' | 'gnarled';
+/** What stands in the foreground of the gallery painting, opposite the moon. */
+export type Foreground = 'cypress' | 'none' | 'pine' | 'poplars' | 'gnarled';
 export interface Tree { id: number; x: number; y: number; r: number; kind: TreeKind; }
 
 /** A windmill standing on a hill; its sails are drawn by the animation layer so they can turn. */
@@ -117,35 +132,47 @@ const emptyVillage = (): Village => ({ houses: [], churches: [], trees: [], mill
 const REGION = 3000;
 const REGION0 = -750;
 const BIOMES: readonly [Biome, number][] = [['village', 0.22], ['wheat', 0.14], ['river', 0.17], ['orchard', 0.12], ['mill', 0.11], ['sunflower', 0.12], ['crows', 0.12]];
-const MOODS: readonly [Mood, number][] = [['classic', 0.28], ['indigo', 0.12], ['teal', 0.1], ['violet', 0.1], ['storm', 0.12], ['dawn', 0.14], ['dusk', 0.14]];
+const MOODS: readonly [Mood, number][] = [['classic', 0.22], ['indigo', 0.09], ['teal', 0.08], ['violet', 0.08], ['storm', 0.1], ['dawn', 0.11], ['dusk', 0.11], ['day', 0.09], ['ember', 0.06], ['aurora', 0.06]];
+const SEASONS: readonly [Season, number][] = [['summer', 0.34], ['spring', 0.22], ['autumn', 0.22], ['winter', 0.22]];
+const SKY_FORMS: readonly [SkyForm, number][] = [['classic', 0.22], ['waves', 0.15], ['great', 0.16], ['triple', 0.16], ['diagonal', 0.15], ['cloudy', 0.16]];
+const SKY_BRUSHES: readonly [SkyBrush, number][] = [['fine', 0.28], ['classic', 0.44], ['bold', 0.28]];
+/** Chance that a chunk beyond the frame holds a big spiral, by sky form. */
+const FORM_SPIRALS: Record<SkyForm, number> = { classic: 0.5, waves: 0.08, great: 0.55, triple: 0.5, diagonal: 0.25, cloudy: 0.35 };
+const FOREGROUNDS: readonly [Foreground, number][] = [['cypress', 0.64], ['none', 0.18], ['pine', 0.06], ['poplars', 0.06], ['gnarled', 0.06]];
+const SKY_STYLES: readonly [SkyStyle, number][] = [['calm', 0.25], ['classic', 0.45], ['turbulent', 0.3]];
 
 /**
  * How a mood shifts the sky's blues: darken, lighten, then mix toward `to`. Glows keep their gold.
  * Dawn and dusk are the warm twilights; the rest are different nights.
  */
-export interface Grade { to: RGB; t: number; dark: number; lift: number; }
+export interface Grade { to: RGB; t: number; dark: number; lift: number; /** 1 in full daylight, when the stars are out of sight. */ day: number; }
 export const GRADES: Record<Mood, Grade> = {
-  classic: { to: [0, 0, 0], t: 0, dark: 0, lift: 0 },
-  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04, lift: 0 },
-  teal: { to: [36, 128, 138], t: 0.2, dark: 0, lift: 0 },
-  violet: { to: [124, 80, 172], t: 0.22, dark: 0, lift: 0 },
-  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16, lift: 0 },
-  dawn: { to: [238, 156, 142], t: 0.34, dark: 0, lift: 0.05 },
-  dusk: { to: [212, 104, 74], t: 0.32, dark: 0.1, lift: 0 },
+  classic: { to: [0, 0, 0], t: 0, dark: 0, lift: 0, day: 0 },
+  indigo: { to: [72, 48, 150], t: 0.2, dark: 0.04, lift: 0, day: 0 },
+  teal: { to: [36, 128, 138], t: 0.2, dark: 0, lift: 0, day: 0 },
+  violet: { to: [124, 80, 172], t: 0.22, dark: 0, lift: 0, day: 0 },
+  storm: { to: [92, 102, 124], t: 0.2, dark: 0.16, lift: 0, day: 0 },
+  dawn: { to: [238, 156, 142], t: 0.34, dark: 0, lift: 0.05, day: 0 },
+  dusk: { to: [212, 104, 74], t: 0.32, dark: 0.1, lift: 0, day: 0 },
+  day: { to: [162, 204, 238], t: 0.6, dark: 0, lift: 0.2, day: 1 },
+  ember: { to: [206, 72, 50], t: 0.4, dark: 0.12, lift: 0, day: 0 },
+  aurora: { to: [44, 176, 132], t: 0.3, dark: 0.08, lift: 0, day: 0 },
 };
 /** The heavy, cold grade over fields of crows, darker than an ordinary stormy night. */
-const CROW_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0 };
+const CROW_SKY: Grade = { to: [66, 82, 104], t: 0.4, dark: 0.3, lift: 0, day: 0 };
 export const MOOD_NAMES: Record<Mood, string> = {
-  classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk',
+  classic: 'Starry night', indigo: 'Indigo night', teal: 'Teal night', violet: 'Violet night', storm: 'Stormy night', dawn: 'Dawn', dusk: 'Dusk', day: 'Daylight', ember: 'Ember sky', aurora: 'Aurora night',
 };
 /** The sky changes mood every ZONE units of walking, easing over the middle of each border. */
 const ZONE = 6000;
 const ZONE0 = -1500;
+/** How often a stretch of the walk has weather falling. */
+const WET_CHANCE = 0.16;
 
 function mixGrade(a: Grade, b: Grade, t: number): Grade {
   return {
     to: [lerp(a.to[0], b.to[0], t), lerp(a.to[1], b.to[1], t), lerp(a.to[2], b.to[2], t)],
-    t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t),
+    t: lerp(a.t, b.t, t), dark: lerp(a.dark, b.dark, t), lift: lerp(a.lift, b.lift, t), day: lerp(a.day, b.day, t),
   };
 }
 const LANDMARKS: readonly [Landmark, number][] = [['none', 0.22], ['mill', 0.15], ['river', 0.17], ['haystacks', 0.13], ['cafe', 0.11], ['sunflowers', 0.11], ['crows', 0.11]];
@@ -213,6 +240,13 @@ export class World {
   readonly flipped: boolean;
   mood: Mood;
   readonly landmark: Landmark;
+  readonly season: Season;
+  readonly skyStyle: SkyStyle;
+  readonly skyForm: SkyForm;
+  readonly foreground: Foreground;
+  readonly skyBrush: SkyBrush;
+  /** Which way a diagonal sky streams (1 or -1). */
+  readonly skySlant: number;
   private majorCache = new Map<number, SkyMajor>();
   private minorCache = new Map<number, Vortex[]>();
   private starCache = new Map<number, Glow[]>();
@@ -232,6 +266,12 @@ export class World {
     this.C = this.flipped ? mirrorClassic() : CLASSIC;
     this.mood = weighted(MOODS, r.random());
     this.landmark = weighted(LANDMARKS, r.random());
+    this.season = weighted(SEASONS, hashFloat(this.s, 961));
+    this.skyStyle = weighted(SKY_STYLES, hashFloat(this.s, 962));
+    this.skyForm = weighted(SKY_FORMS, hashFloat(this.s, 965));
+    this.skyBrush = weighted(SKY_BRUSHES, hashFloat(this.s, 966));
+    this.skySlant = hashFloat(this.s, 967) < 0.5 ? 1 : -1;
+    this.foreground = weighted(FOREGROUNDS, hashFloat(this.s, 968));
     // Crows come with weather: most nights that feature them are stormy.
     if (this.landmark === 'crows' && r.chance(0.65)) this.mood = 'storm';
     this.moodCache.set(0, this.mood);
@@ -338,6 +378,37 @@ export class World {
       : GRADES[this.moodOf(k)];
     const crows = this.biomeWeight(x, 'crows');
     return crows > 0.01 ? mixGrade(base, CROW_SKY, crows) : base;
+  }
+
+  /** Whether it is bright enough at x that the stars are out of sight. */
+  isDay(x: number): boolean {
+    return this.gradeAt(x).day > 0.55;
+  }
+
+  private glowCache = new Map<number, boolean>();
+
+  /** Stars fade out in daylight; the moon (a sun, by day) is always there. */
+  glowShown(g: Glow): boolean {
+    if (g.kind === 'moon') return true;
+    let v = this.glowCache.get(g.id);
+    if (v === undefined) {
+      v = !this.isDay(g.x);
+      this.glowCache.set(g.id, v);
+    }
+    return v;
+  }
+
+  /** Whether the weather has turned at x. Most of the night is dry: a stretch of the walk is rained on about one time in six. */
+  private wet(x: number): boolean {
+    return hashFloat(this.s, this.zoneAt(x).k, 964) < WET_CHANCE;
+  }
+
+  /** What is falling at x, if anything: rain (snow in winter), or the season's petals and leaves. */
+  precipAt(x: number): Precip | null {
+    if (!this.wet(x)) return null;
+    if (this.season === 'winter') return 'snow';
+    if (this.moodAt(x) === 'storm' || this.season === 'summer') return 'rain';
+    return this.season === 'spring' ? 'petals' : 'leaves';
   }
 
   // ---------------------------------------------------------------- regions
@@ -466,16 +537,16 @@ export class World {
 
     if (c === 0) {
       // The great swirl wanders a little further from seed to seed than the rest of the layout.
-      for (const sw of C.swirls) m.vortices.push({ x: sw.x * FRAME_W + jx() * 2.5, y: sw.y * H + jy() * 2.5, R: sw.R * H * r.range(0.88, 1.12), dir: sw.dir });
-    } else if (c !== 1 && c !== -1 && this.sparse(c, 13, 0.5)) {
-      const cx = x0 + CW * r.range(0.3, 0.7), cy = H * r.range(0.26, 0.36), R = H * r.range(0.13, 0.17);
+      for (const sw of this.frameSwirls(r)) m.vortices.push({ x: sw.x * FRAME_W + jx() * 2.5, y: sw.y * H + jy() * 2.5, R: sw.R * H * r.range(0.88, 1.12), dir: sw.dir });
+    } else if (c !== 1 && c !== -1 && this.sparse(c, 13, FORM_SPIRALS[this.skyForm])) {
+      const cx = x0 + CW * r.range(0.3, 0.7), cy = H * r.range(0.26, 0.36), R = H * r.range(0.13, 0.17) * (this.skyForm === 'great' ? 1.5 : this.skyForm === 'cloudy' ? 0.6 : 1);
       const dir = r.chance(0.5) ? 1 : -1, side = r.chance(0.5) ? 1 : -1;
       // A big spiral with a smaller counter-rotating one tucked below and to the side.
       m.vortices.push({ x: cx, y: cy, R, dir });
       m.vortices.push({ x: cx + side * R * 0.95, y: cy + R * 0.8, R: R * r.range(0.5, 0.65), dir: -dir });
     }
 
-    if (c === cypressChunk) {
+    if (c === cypressChunk && this.foreground === 'cypress') {
       m.cypress = {
         id: hash(this.s, c, 15), x: this.fx(0.25) * FRAME_W,
         tongues: this.cypressVariant().map(([x, top, w, lean], i) => this.makeTongue(r, x * FRAME_W + jx() * 0.5, top * H + jy() * 2, w * FRAME_W * r.range(0.92, 1.08), lean, i)),
@@ -530,6 +601,32 @@ export class World {
     return tongues.map(([x, top, w, lean], i) => [x + dx, i ? clamp(top * stretch, 0.01, 0.74) : top, w, lean] as const);
   }
 
+  /** The swirls of the classic frame, as frame fractions, for this seed's sky form. */
+  private frameSwirls(r: Rng): { x: number; y: number; R: number; dir: number }[] {
+    const fx = this.fx, [a, b] = this.C.swirls;
+    switch (this.skyForm) {
+      case 'waves': return [];
+      case 'great': return [{ x: fx(0.55), y: 0.36, R: 0.3, dir: a.dir }];
+      case 'triple': return [a, b, { x: fx(0.32), y: 0.2, R: 0.085, dir: -a.dir }];
+      case 'diagonal': return [{ ...a, R: a.R * 0.7 }];
+      case 'cloudy': {
+        const out: { x: number; y: number; R: number; dir: number }[] = [];
+        for (let i = 0; i < 6; i++) {
+          // Scatter small whorls over the open sky, clear of the moon.
+          for (let tries = 0; tries < 20; tries++) {
+            const x = fx(r.range(0.1, 0.95)), y = r.range(0.12, 0.5), R = r.range(0.055, 0.09);
+            if (Math.hypot((x - this.C.moon.x) * 1.25, y - this.C.moon.y) < 0.2) continue;
+            if (out.some((o) => Math.hypot((x - o.x) * 1.25, y - o.y) < (R + o.R) * 1.2)) continue;
+            out.push({ x, y, R, dir: i % 2 ? 1 : -1 });
+            break;
+          }
+        }
+        return out;
+      }
+      default: return this.C.swirls;
+    }
+  }
+
   private makeMoon(c: number, x: number, y: number, core: number, r: Rng): Glow {
     const phase: MoonPhase = r.random() < 0.6 ? 'crescent' : r.chance(0.45) ? 'half' : 'full';
     // The lit side faces away from the cutout; mirrored layouts light the other side.
@@ -557,11 +654,12 @@ export class World {
     let v = this.minorCache.get(c);
     if (v) return v;
     v = [];
-    if (c === 0 && hashFloat(this.s, 0, 31) < 0.35) {
+    const eddies = this.skyStyle === 'turbulent' ? 2 + Math.floor(hashFloat(this.s, 0, 35) * 2) : this.skyStyle === 'calm' ? 0 : hashFloat(this.s, 0, 31) < 0.35 ? 1 : 0;
+    if (c === 0 && eddies) {
       // Sometimes a small eddy curls in an empty patch of the classic sky.
       const r = this.rng(c, 2);
       const majors = this.majorsNear(c);
-      for (let tries = 0; tries < 40 && !v.length; tries++) {
+      for (let tries = 0; tries < 40 * eddies && v.length < eddies; tries++) {
         const cand = { x: FRAME_W * r.range(0.05, 0.95), y: H * r.range(0.1, 0.4), R: H * r.range(0.05, 0.07), dir: r.chance(0.5) ? 1 : -1 };
         const clear = majors.every((mj) =>
           (!mj.moon || dist(cand.x, cand.y, mj.moon.x, mj.moon.y) > mj.moon.halo + cand.R * 1.5) &&
@@ -573,7 +671,7 @@ export class World {
     if (!this.isClassic(c)) {
       const r = this.rng(c, 2);
       const majors = this.majorsNear(c);
-      const n = r.int(0, 2);
+      const n = this.skyForm === 'waves' ? 0 : this.skyForm === 'cloudy' ? r.int(2, 4) : r.int(0, 2);
       for (let tries = 0; v.length < n && tries < 60; tries++) {
         const cand = { x: c * CW + CW * r.range(0.1, 0.9), y: H * r.range(0.08, 0.45), R: H * r.range(0.05, 0.075), dir: r.chance(0.5) ? 1 : -1 };
         const clear = majors.every((m) =>
@@ -599,7 +697,7 @@ export class World {
     const r = this.rng(c, 3);
     // Each seed leaves out a couple of the eleven stars, so the constellation changes.
     const drop = new Set<number>();
-    const nDrop = Math.floor(hashFloat(this.s, 0, 33) * 3);
+    const nDrop = this.skyStyle === 'turbulent' ? 0 : Math.floor(hashFloat(this.s, 0, 33) * 3) + (this.skyStyle === 'calm' ? 2 : 0);
     for (let k = 0; k < nDrop; k++) drop.add(Math.floor(hashFloat(this.s, 0, 34, k) * this.C.stars.length));
     return this.C.stars
       .map(([x, y, size], i) => ({ x: x * FRAME_W, y: y * H, size, i }))
@@ -750,8 +848,21 @@ export class World {
     const X = (f: number) => fx(f) * FRAME_W;
     const span = (a: number, b: number): [number, number] => [Math.min(X(a), X(b)), Math.max(X(a), X(b))];
     const millX = X(0.84);
+    // The foreground: a cypress (placed elsewhere), or one of these in its place, or nothing at all.
+    const fg: Tree[] = [], open = this.foreground === 'none';
+    if (this.foreground === 'pine') {
+      fg.push({ id: hash(this.s, c, 57, 0), x: X(r.range(0.2, 0.3)), y: H * r.range(0.98, 1.02), r: H * r.range(0.1, 0.12), kind: 'pine' });
+      if (r.chance(0.6)) fg.push({ id: hash(this.s, c, 57, 1), x: X(r.range(0.37, 0.43)), y: H * r.range(0.99, 1.03), r: H * r.range(0.05, 0.07), kind: 'pine' });
+    } else if (this.foreground === 'poplars') {
+      for (let k = 0, n = r.int(3, 5); k < n; k++) fg.push({ id: hash(this.s, c, 58, k), x: X(0.13 + k * 0.07 + r.range(-0.015, 0.015)), y: H * r.range(0.97, 1.03), r: H * r.range(0.065, 0.1), kind: 'poplar' });
+    } else if (this.foreground === 'gnarled') {
+      fg.push({ id: hash(this.s, c, 59, 0), x: X(r.range(0.2, 0.3)), y: H * r.range(0.99, 1.03), r: H * r.range(0.1, 0.12), kind: 'gnarled' });
+      if (r.chance(0.5)) fg.push({ id: hash(this.s, c, 59, 1), x: X(r.range(0.38, 0.44)), y: H * r.range(0.99, 1.03), r: H * r.range(0.05, 0.07), kind: 'gnarled' });
+    }
+    v.trees.push(...fg);
     const blocked = (x: number, y: number, pad: number) =>
       cypresses.some((q) => cypressCovers(q, this.noise, x, y, pad)) || this.inRiver(x, y, pad + 4) ||
+      fg.some((t) => Math.abs(x - t.x) < t.r * (t.kind === 'poplar' ? 0.9 : 2.1) + pad) ||
       (lm === 'mill' && Math.abs(x - millX) < H * 0.07 && y < this.villageTop(x) + H * 0.08);
 
     const cx = this.C.church.x * FRAME_W + r.range(-0.03, 0.03) * FRAME_W;
@@ -776,7 +887,7 @@ export class World {
       this.addStacks(v, r, c, r.int(2, 4), () => r.range(a, b), () => r.range(0.55, 0.85), blocked);
       for (let k = 0, n = r.int(6, 9); k < n; k++) {
         const x = r.range(a, b), y = H * r.range(0.3, 0.55);
-        v.crows.push({ id: hash(this.s, c, 56, k), x, y, size: H * r.range(0.016, 0.024), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.2) });
+        v.crows.push({ id: hash(this.s, c, 56, k), x, y, size: H * r.range(0.021, 0.031), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.2) });
       }
     }
     if (lm === 'cafe') {
@@ -793,14 +904,15 @@ export class World {
       }
     }
 
-    const [lo, hi] = span(0.36, 1.03);
+    // With no big tree on the near side, the village spreads across the whole frame.
+    const [lo, hi] = span(open ? 0.04 : 0.36, 1.03);
     this.placeHouses(v, r, c, r.int(46, 56), 800, () => {
       const t = Math.pow(r.random(), 0.85), x = r.range(lo, hi);
       const style: House['style'] = r.chance(0.12) ? 'tall' : r.chance(0.1) ? 'cottage' : 'block';
       return { x, y: this.depthY(x, lerp(0.1, 0.88, t)), size: H * lerp(0.016, 0.036, t), style };
     }, blocked);
 
-    const [tlo, thi] = span(0.4, 1.02);
+    const [tlo, thi] = span(open ? 0.05 : 0.4, 1.02);
     this.treeLine(v, r, c, tlo, thi, false, blocked);
     for (let j = 0, n = r.int(14, 18); j < n; j++) {
       const x = r.range(tlo, thi), t = r.range(0.08, 0.95);
@@ -909,7 +1021,7 @@ export class World {
       this.foregroundPlants(v, r, c, x0, x1, r.int(0, 2), blocked);
       for (let k = 0, n = r.int(5, 11); k < n; k++) {
         const x = anyX(), y = H * r.range(0.12, 0.5);
-        v.crows.push({ id: hash(this.s, c, 54, k), x, y, size: H * r.range(0.016, 0.026), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.4) });
+        v.crows.push({ id: hash(this.s, c, 54, k), x, y, size: H * r.range(0.021, 0.033), ph: r.range(0, 6.28), speed: r.range(1.4, 2.4), loop: r.range(0.6, 1.4) });
       }
     } else {
       // Windmill hills: one or two mills on the ridge, a hamlet and a few haystacks.
@@ -963,7 +1075,9 @@ export class World {
 // ------------------------------------------------------------------ cypress geometry
 
 function prof(t: number) {
-  return Math.pow(Math.max(0, 1 - t), 0.8) * (0.85 + 0.15 * Math.min(1, t * 5));
+  // The flame narrows steadily, then closes in a rounded tip rather than running out to a needle.
+  const cap = Math.sqrt(Math.min(1, Math.max(0, 1 - t) / 0.16));
+  return Math.pow(Math.max(0, 1 - t), 0.68) * (0.85 + 0.15 * Math.min(1, t * 5)) * (0.55 + 0.45 * cap);
 }
 
 // Skewed-sine lobes: each edge swells slowly then pulls in quickly, like upward-leaning flame tongues.

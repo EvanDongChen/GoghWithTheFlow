@@ -5,6 +5,7 @@ import { clamp, lerp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { H, type World } from '../world/world';
 import { cellRange, inPad, L, strokeItem, type ChunkPlan } from './plan';
+import { groundSeason } from './season';
 import { moodTint } from './sky';
 
 const P = palette({
@@ -51,7 +52,7 @@ export function planLand(p: ChunkPlan) {
   const w = p.world;
   const backPoly = band(p, w.ridgeBack, w.ridgeFront);
   const frontPoly = band(p, w.ridgeFront, w.villageTop);
-  const grade = w.gradeAt((p.x0 + p.x1) / 2), backBase = moodTint(grade, P.back[1]), frontBase = moodTint(grade, P.front[1]);
+  const grade = w.gradeAt((p.x0 + p.x1) / 2), backBase = groundSeason(w.season, moodTint(grade, P.back[1]), 0.45), frontBase = groundSeason(w.season, moodTint(grade, P.front[1]), 0.45);
   p.items.push({ layer: L.HILL_BASE, key: 0, op: (ctx) => { fillPoly(ctx, backPoly, backBase); fillPoly(ctx, frontPoly, frontBase); } });
 
   const field = landField(w), sp = 8;
@@ -67,7 +68,7 @@ export function planLand(p: ChunkPlan) {
       const peak = isBack && r.random() < w.peakness(px) * 0.85;
       const pal = peak ? P.peak : isBack ? (r.chance(0.14) ? P.backHi : P.back) : r.chance(0.1) ? P.frontHi : P.front;
       const pts = trace(field, px, py, r.range(26, 44), 5);
-      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), moodTint(w.gradeAt(px), jitter(r.pick(pal), r, 18))));
+      p.items.push(strokeItem(L.HILL, r.random(), seed, pts, r.range(4.5, 7), groundSeason(w.season, moodTint(w.gradeAt(px), jitter(r.pick(pal), r, 18)), 0.45)));
     }
   }
 
@@ -95,7 +96,7 @@ function planGround(p: ChunkPlan) {
   const poly: Pt[] = [];
   for (let x = p.x0 - p.pad - 10; x <= p.x1 + p.pad + 10; x += 10) poly.push([x, w.villageTop(x)]);
   poly.push([p.x1 + p.pad + 10, H + 20], [p.x0 - p.pad - 10, H + 20]);
-  p.items.push({ layer: L.GROUND_BASE, key: 0, op: (ctx) => fillPoly(ctx, poly, P.ground[0]) });
+  p.items.push({ layer: L.GROUND_BASE, key: 0, op: (ctx) => fillPoly(ctx, poly, groundSeason(w.season, P.ground[0])) });
 
   const sp = 8;
   const [i0, i1] = cellRange(p, sp);
@@ -119,7 +120,7 @@ function planGround(p: ChunkPlan) {
         [px + (Math.cos(a) * len) / 2, py + (Math.sin(a) * len) / 2],
       ];
       const pal = crowed ? (r.chance(0.12) ? P.wheatLit : P.crowWheat) : wheat ? (r.chance(0.15) ? P.wheatLit : P.wheat) : sun ? P.sun : orchard ? P.orchard : fieldy ? P.field : P.ground;
-      p.items.push(strokeItem(L.GROUND, r.random(), seed, pts, r.range(4, 6.5), jitter(r.pick(pal), r, 16)));
+      p.items.push(strokeItem(L.GROUND, r.random(), seed, pts, r.range(4, 6.5), groundSeason(w.season, jitter(r.pick(pal), r, 16))));
     }
   }
 }

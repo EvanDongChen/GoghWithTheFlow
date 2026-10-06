@@ -1,7 +1,7 @@
 // The cypress: a dark cluster of flame tongues licking up into the sky from the foreground.
 import { fillPoly, trace, type Field, type Pt } from '../core/brush';
 import { jitter, palette } from '../core/color';
-import { clamp } from '../core/math';
+import { clamp, lerp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { cypressSpan, tongueGeom as G, tongueInside, type Cypress, type Tongue } from '../world/world';
 import type { Noise } from '../core/noise';
@@ -67,10 +67,13 @@ function planCypress(p: ChunkPlan, c: Cypress, spanA: number, spanB: number) {
     for (let j = Math.floor(top / sp) - 1; j * sp < c.tongues[0].base + sp; j++) {
       const seed = hash(c.id, i, j), r = new Rng(seed);
       const px = (i + r.range(-0.5, 0.5)) * sp, py = (j + r.range(-0.5, 0.5)) * sp;
-      if (!inPad(p, px) || !owner(c, n, px, py)) continue;
+      const own = inPad(p, px) ? owner(c, n, px, py) : null;
+      if (!own) continue;
       const u = r.random(), pal = u < 0.55 ? P.dark : u < 0.82 ? P.mid : u < 0.95 ? P.brown : P.hi;
-      const pts = trace(field, px, py, r.range(34, 64), 7);
-      p.items.push(strokeItem(L.CYPRESS, base + r.random(), seed, pts, r.range(5.5, 9.5), jitter(r.pick(pal), r, 14)));
+      // Near the tip the flame is narrower than a full stroke: shorten and thin them so none poke out past the edge.
+      const tip = clamp((G.t(own, py) - 0.78) / 0.2, 0, 1), k = lerp(1, 0.38, tip);
+      const pts = trace(field, px, py, r.range(34, 64) * k, 7);
+      p.items.push(strokeItem(L.CYPRESS, base + r.random(), seed, pts, r.range(5.5, 9.5) * lerp(1, 0.62, tip), jitter(r.pick(pal), r, 14)));
     }
   }
 
