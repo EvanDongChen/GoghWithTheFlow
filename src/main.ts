@@ -409,8 +409,8 @@ class App {
       const job = ++this.previewJob, card = await renderPostcard(info);
       if (job !== this.previewJob || !this.card) return;
       const pv = $<HTMLCanvasElement>('card-preview');
-      pv.width = 720;
-      pv.height = 480;
+      pv.width = 1200;
+      pv.height = 800;
       pv.getContext('2d')!.drawImage(card, 0, 0, pv.width, pv.height);
     }, delay);
   }

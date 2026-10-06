@@ -151,15 +151,17 @@
       </button>
       <p class="about-kicker">Send a postcard</p>
       <h3 id="card-title">Wish you were here.</h3>
-      <canvas class="card-preview" id="card-preview" width="720" height="480" aria-label="Postcard preview"></canvas>
-      <div class="card-designs" id="card-designs" role="radiogroup" aria-label="Postcard design"></div>
-      <label class="card-msg">
-        <span>Your message <em id="card-count">140</em></span>
-        <textarea id="card-message" maxlength="140" rows="2" placeholder="Wish you were here…" spellcheck="false"></textarea>
-      </label>
-      <div class="card-actions">
-        <button class="btn-primary" id="card-save" type="button">Save postcard</button>
-        <button class="btn-ghost" id="card-plain" type="button">Plain image</button>
+      <canvas class="card-preview" id="card-preview" width="1200" height="800" aria-label="Postcard preview"></canvas>
+      <div class="card-side">
+        <div class="card-designs" id="card-designs" role="radiogroup" aria-label="Postcard design"></div>
+        <label class="card-msg">
+          <span>Your message <em id="card-count">140</em></span>
+          <textarea id="card-message" maxlength="140" rows="3" placeholder="Wish you were here…" spellcheck="false"></textarea>
+        </label>
+        <div class="card-actions">
+          <button class="btn-primary" id="card-save" type="button">Save postcard</button>
+          <button class="btn-ghost" id="card-plain" type="button">Plain image</button>
+        </div>
       </div>
     </div>
 

@@ -44,7 +44,7 @@ your friend sees exactly your night.
 - **Sky and time of day**: each seed starts in a mood (classic, indigo, teal, violet, stormy, dawn, dusk, daylight, ember or aurora), and the sky drifts into a different one every few screens as you wander. In daylight the stars go out and the moon becomes a sun. Skies also differ in composition (the original two swirls, rolling waves, one great spiral, three spirals, a diagonal stream or a churn of small whorls), in temperament (calm, classic or turbulent) and in brushwork (fine dabs, the usual strokes or bold ribbons). The current mood and season show in the HUD.
 - **Seasons and weather**: every night is in summer, spring (almond blossom and drifting petals), autumn (rust-coloured trees and falling leaves) or winter (snow on the ground and falling snow). Weather is rare: only about one stretch in six has anything falling, and it is rain, snow, petals or leaves to suit the season.
 - **Postcards** (`S`): a dialog lets you pick a design (classic, museum, airmail or polaroid) and write a message in handwriting, with a live preview. The card carries the painting, its title and number, sky, season, moon, landmark or country, brushstroke count, a stamp and a postmark. `Shift+S` saves the plain image.
-- **Foreground tree**: each seed picks a different silhouette for the big cypress on the near side of the gallery painting.
+- **Foreground**: the near side of the gallery painting is a cypress about two nights in three (in one of several shapes). The rest have an open village, umbrella pines, a row of poplars or a gnarled old olive.
 
 ## On phones
 
