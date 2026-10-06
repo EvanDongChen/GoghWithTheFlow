@@ -37,6 +37,11 @@ const P = palette({
   millWarm: ['#9a8a6a', '#a8987a', '#8a7a5c'],
   boat: ['#2e5a6a', '#3a6a5a', '#7a4a2e', '#2a4a7a', '#5a6a3a'],
   post: ['#141a2a', '#1a2030'],
+  sunPetal: ['#f4c430', '#f7d452', '#e8a820', '#fbe27a', '#e09a1c'],
+  sunPetalLit: ['#fbe88a', '#fff0a0'],
+  sunCore: ['#3a2412', '#4a3018', '#2c1a0e', '#5a3c1c'],
+  sunStem: ['#3e5a2c', '#4a6a34', '#2e4a26', '#58763c'],
+  crow: ['#0c0e14', '#14161e', '#1a1c26', '#080a10'],
 });
 
 type Poly = Pt[];
@@ -291,6 +296,45 @@ function drawPine(ctx: Ctx, rng: Rng, t: Tree) {
   }
 }
 
+function drawSunflower(ctx: Ctx, rng: Rng, t: Tree) {
+  // A tall stem with broad leaves, and a big head of radiating petals around a dark seeded eye.
+  const hh = t.r * 3.4, lean = rng.range(-0.35, 0.35), hx = t.x + lean * t.r, hy = t.y - hh, R = t.r * 0.95;
+  for (let i = 0; i < 2; i++) {
+    stroke(ctx, rng, [[t.x + rng.range(-1, 1), t.y], [lerp(t.x, hx, 0.5) + rng.range(-1.5, 1.5), (t.y + hy) / 2], [hx, hy]], rng.range(3, 4.4), jitter(rng.pick(P.sunStem), rng, 12));
+  }
+  for (let i = 0; i < 2; i++) {
+    const side = i ? 1 : -1, ly = t.y - hh * rng.range(0.25, 0.6);
+    stroke(ctx, rng, [[t.x, ly], [t.x + side * R * 0.6, ly - R * 0.25], [t.x + side * R * 1.15, ly + R * 0.1]], rng.range(4.5, 6.5), jitter(rng.pick(P.sunStem), rng, 18));
+  }
+  // The head is a touch oval, tilted toward the lean; petals first, ragged and overlapping.
+  const n = 16, tilt = lean * 0.6;
+  for (let ring = 0; ring < 2; ring++) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + ring * 0.2 + rng.range(-0.1, 0.1), len = R * (ring ? 0.8 : 1) * rng.range(0.85, 1.1);
+      const ca = Math.cos(a), sa = Math.sin(a), x0 = hx + ca * R * 0.35, y0 = hy + sa * R * 0.3 * (1 + tilt * 0.3);
+      const pal = ca + sa < -0.4 ? P.sunPetalLit : P.sunPetal;
+      stroke(ctx, rng, [[x0, y0], [hx + ca * len * 0.7, hy + sa * len * 0.62], [hx + ca * len + rng.range(-1, 1), hy + sa * len * 0.85]], rng.range(3.4, 5), jitter(rng.pick(pal), rng, 16));
+    }
+  }
+  fillPoly(ctx, blob(rng, hx, hy, R * 0.42, R * 0.38), P.sunCore[2]);
+  for (let i = 0, m = Math.round(R * 1.2); i < m; i++) {
+    const a = rng.range(0, TAU), rr = Math.sqrt(rng.random()) * 0.4, x = hx + Math.cos(a) * R * rr, y = hy + Math.sin(a) * R * rr * 0.9;
+    stroke(ctx, rng, [[x - 1.5, y], [x + 1.5, y + rng.range(-0.6, 0.6)]], rng.range(2.6, 3.8), jitter(rng.pick(P.sunCore), rng, 12));
+  }
+}
+
+/** A crow in flight, wings raised by `flap` (-1..1), facing `dir`. Used by the animation layer and for stills. */
+export function drawCrow(ctx: Ctx, rng: Rng, x: number, y: number, size: number, flap: number, dir: 1 | -1) {
+  const wing = size * 1.15, lift = flap * size * 0.7;
+  const body: Pt[] = [[x - dir * size * 0.5, y + size * 0.06], [x, y], [x + dir * size * 0.5, y - size * 0.05]];
+  stroke(ctx, rng, body, size * 0.5, jitter(rng.pick(P.crow), rng, 8));
+  for (const side of [-1, 1]) {
+    const tip: Pt = [x + side * wing, y - lift - size * 0.1], mid: Pt = [x + side * wing * 0.5, y - lift * 0.55 - size * 0.32];
+    stroke(ctx, rng, [[x + side * size * 0.1, y - size * 0.05], mid, tip], size * 0.36, jitter(rng.pick(P.crow), rng, 8));
+  }
+  stroke(ctx, rng, [[x + dir * size * 0.5, y - size * 0.05], [x + dir * size * 0.75, y - size * 0.02]], size * 0.2, P.crow[3]);
+}
+
 function drawIris(ctx: Ctx, rng: Rng, t: Tree) {
   // A clump of sword-shaped leaves with violet flowers among them.
   const n = rng.int(9, 15);
@@ -373,6 +417,7 @@ export function millHub(m: Mill): Pt {
 function drawTree(ctx: Ctx, rng: Rng, t: Tree) {
   if (t.kind === 'pine') return drawPine(ctx, rng, t);
   if (t.kind === 'iris') return drawIris(ctx, rng, t);
+  if (t.kind === 'sunflower') return drawSunflower(ctx, rng, t);
   const poplar = t.kind === 'poplar', olive = t.kind === 'olive';
   const rx = t.r * (poplar ? 0.55 : olive ? 1.25 : 1), ry = t.r * (poplar ? 2.1 : olive ? 0.65 : 0.9), cy = t.y - ry * 0.8;
   const dark = olive ? P.treeDark : P.bushDark, mid = olive ? P.treeMid : P.bushMid, light = olive ? P.treeLight : P.bushLight;
@@ -404,7 +449,7 @@ export function planVillage(p: ChunkPlan) {
   };
   for (const h of houses) add(h.x, h.w + h.depth + 10, h.y, h.id, (ctx, rng) => drawHouse(ctx, rng, h));
   for (const c of churches) add(c.x, c.bodyW + 20, c.base, c.id, (ctx, rng) => drawChurch(ctx, rng, c));
-  for (const t of trees) add(t.x, t.r * 2.2 + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
+  for (const t of trees) add(t.x, t.r * (t.kind === 'sunflower' ? 3.4 : 2.2) + 20, t.y, t.id, (ctx, rng) => drawTree(ctx, rng, t));
   for (const m of mills) add(m.x, m.w + 10, m.y, m.id, (ctx, rng) => drawMill(ctx, rng, m));
   for (const s of stacks) add(s.x, s.w + 10, s.y, s.id, (ctx, rng) => drawStack(ctx, rng, s));
   for (const l of lamps) add(l.x, l.h + 10, l.y, l.id, (ctx, rng) => drawLamp(ctx, rng, l));

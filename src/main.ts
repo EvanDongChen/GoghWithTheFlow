@@ -21,7 +21,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pretty = (seed: string) => seed.replace(/-/g, ' ');
 
 const REGION_NAMES: Record<Biome, string> = {
-  village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills',
+  village: 'A village under the church spire', wheat: 'Wheat fields and haystacks', river: 'A gaslit river', orchard: 'Olive orchards', mill: 'Windmill hills', sunflower: 'A field of sunflowers', crows: 'Wheat under a stormy sky, with crows',
 };
 const LANDMARK_NAMES: Record<Landmark, string> = {
   none: 'A quiet village', mill: 'A windmill on the hills', river: 'A gaslit river', haystacks: 'Haystacks in the wheat', cafe: 'A lit café terrace',
