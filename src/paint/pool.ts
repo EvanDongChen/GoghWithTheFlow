@@ -31,7 +31,9 @@ export class ChunkPool {
 
     const canWork = typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined';
     // Two workers paint chunks in parallel; more would starve the page's own rendering on smaller machines.
-    const n = canWork ? Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 2)) : 0;
+    // A phone gets one: its cores are slower and share a thermal budget with the page.
+    const cores = navigator.hardwareConcurrency || 2, phone = matchMedia('(pointer: coarse)').matches;
+    const n = canWork ? Math.max(1, Math.min(phone && cores <= 6 ? 1 : 2, cores - 2)) : 0;
     for (let i = 0; i < n; i++) {
       try {
         const worker = new PaintWorker();

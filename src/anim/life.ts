@@ -14,8 +14,8 @@ import { clamp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
-import { houseWindows, millHub } from '../paint/village';
-import { cypressCovers, World, type Glow, type Mill } from '../world/world';
+import { drawCrow, houseWindows, millHub } from '../paint/village';
+import { cypressCovers, World, type Crow, type Glow, type Mill } from '../world/world';
 
 interface Particle {
   x: number; y: number;
@@ -74,6 +74,8 @@ export class Life {
   private ps: Particle[] = [];
   private rng = new Rng((Math.random() * 2 ** 32) >>> 0);
   private t = 0;
+  /** 0..1: scales the number of streaming strokes; the app lowers it when frames run long. */
+  quality = 1;
   private shooter: Shooter | null = null;
   private nextShooter = 6 + Math.random() * 8;
   private warm = glowSprite('255,214,110');
@@ -103,7 +105,7 @@ export class Life {
   update(dt: number, view: View) {
     this.t += dt;
     const margin = 60, x0 = view.x0 - margin, x1 = view.x1 + margin;
-    const target = Math.round(clamp((x1 - x0) * 0.65, 150, 1500));
+    const target = Math.round(clamp((x1 - x0) * 0.65, 150, 1500) * this.quality);
 
     // Retire particles that aged out, left the sky or scrolled away; then top back up.
     this.ps = this.ps.filter((p) => p.age < p.life && p.x > x0 - 40 && p.x < x1 + 40 && this.inSky(p.x, p.y));
@@ -216,9 +218,26 @@ export class Life {
     return img;
   }
 
+  /** Crows wheel in slow loops over their wheat field, flapping as they go. Stills freeze them mid-flight. */
+  private drawCrows(ctx: CanvasRenderingContext2D, view: View, live: boolean) {
+    const sx = (x: number) => (x - view.x0) * view.scale + view.offsetX, k = view.scale;
+    for (const c of this.inView(view, (n) => n.crows, 400) as Crow[]) {
+      const a = live ? this.t * 0.22 * c.speed + c.ph : c.ph;
+      const cx = c.x + Math.cos(a) * 150 * c.loop, cy = c.y + Math.sin(a * 1.3) * 34 * c.loop;
+      // Flapping in bursts, with a glide between.
+      const flap = live ? Math.sin(this.t * c.speed * 5 + c.ph) * (0.35 + 0.65 * Math.max(0, Math.sin(this.t * 0.4 + c.ph * 3))) : 0.3;
+      ctx.save();
+      ctx.translate(sx(cx), cy * k);
+      ctx.scale(k, k);
+      drawCrow(ctx, new Rng(c.id), 0, 0, c.size, flap, Math.sin(a) > 0 ? -1 : 1);
+      ctx.restore();
+    }
+  }
+
   /** The parts of the scene that live outside the baked chunks; drawn even when the painting is still. */
   drawStatic(ctx: CanvasRenderingContext2D, view: View) {
     for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph);
+    this.drawCrows(ctx, view, false);
   }
 
   draw(ctx: CanvasRenderingContext2D, view: View) {
@@ -226,6 +245,7 @@ export class Life {
     const chunks: number[] = [];
     for (let c = World.chunkOf(view.x0) - 1; c <= World.chunkOf(view.x1) + 1; c++) chunks.push(c);
     for (const m of this.inView(view, (n) => n.mills)) this.drawSails(ctx, view, m, m.ph + this.t * m.speed);
+    this.drawCrows(ctx, view, true);
     const seen = new Set<number>(), glows: Glow[] = [];
     for (const c of chunks) for (const g of this.world.near(c).glows) if (!seen.has(g.id) && g.x > view.x0 - 300 && g.x < view.x1 + 300) { seen.add(g.id); glows.push(g); }
 
