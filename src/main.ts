@@ -62,6 +62,8 @@ class App {
     if (params.get('animate') === '0') this.animating = false;
     this.bind();
     this.setSeed(params.get('seed') || randomSeed());
+    // A shared link can point at a spot along the night.
+    if (params.has('x')) this.camX = Number(params.get('x')) || 0;
     this.setMode(params.get('mode') === 'wander' ? 'wander' : 'gallery');
     this.setPlaying(this.playing);
     this.setAnimating(this.animating);
@@ -121,7 +123,7 @@ class App {
     url.searchParams.set('seed', this.world.seed);
     if (this.mode === 'wander') url.searchParams.set('mode', 'wander');
     else url.searchParams.delete('mode');
-    for (const k of ['intro', 'speed', 'animate']) url.searchParams.delete(k);
+    for (const k of ['intro', 'speed', 'animate', 'x']) url.searchParams.delete(k);
     history.replaceState(null, '', url);
   }
 
@@ -267,6 +269,7 @@ class App {
 
   private async share() {
     const url = new URL(location.href);
+    if (this.mode === 'wander') url.searchParams.set('x', String(Math.round(this.camX)));
     const text = `The Starry Night, No. ${pretty(this.world.seed)}`;
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) {

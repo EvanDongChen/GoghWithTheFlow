@@ -274,11 +274,25 @@ export class World {
     return weighted(BIOMES, hashFloat(this.s, idx, 901));
   }
 
-  /** Region 0 is the classic village; others are drawn by lot, avoiding an immediate repeat. */
+  private biomeCache = new Map<number, Biome>([[0, 'village']]);
+
+  /**
+   * Region 0 is the classic village; the others are drawn by lot, never repeating the region
+   * next to them (resolved outward from region 0, so neighbours always agree).
+   */
   biomeOf(idx: number): Biome {
-    if (idx === 0) return 'village';
-    const b = this.biomeRaw(idx);
-    return b === this.biomeRaw(idx - 1) || ((idx === 1 || idx === -1) && b === 'village') ? weighted(BIOMES, hashFloat(this.s, idx, 902)) : b;
+    const cached = this.biomeCache.get(idx);
+    if (cached) return cached;
+    const step = idx > 0 ? 1 : -1;
+    let k = idx - step;
+    while (!this.biomeCache.has(k)) k -= step;
+    for (k += step; ; k += step) {
+      const prev = this.biomeCache.get(k - step)!;
+      let b = this.biomeRaw(k);
+      for (let t = 0; b === prev && t < 8; t++) b = weighted(BIOMES, hashFloat(this.s, k, 902 + t));
+      this.biomeCache.set(k, b);
+      if (k === idx) return b;
+    }
   }
 
   biomeAt(x: number): Biome {
@@ -301,7 +315,7 @@ export class World {
   /** How much of the ground at x is wheat field: wheat and mill regions, or the haystack landmark. */
   wheatWeight(x: number): number {
     const f = this.fx(x / FRAME_W);
-    const classic = this.landmark === 'haystacks' ? this.classicWeight(x) * smoothstep(0.36, 0.44, f) * (1 - smoothstep(0.66, 0.74, f)) : 0;
+    const classic = this.landmark === 'haystacks' ? 0.85 * this.classicWeight(x) * smoothstep(0.3, 0.46, f) * (1 - smoothstep(0.62, 0.78, f)) : 0;
     return Math.max(classic, this.biomeWeight(x, 'wheat'), 0.6 * this.biomeWeight(x, 'mill'));
   }
 
@@ -620,7 +634,7 @@ export class World {
       const [a, b] = span(0.42, 0.68);
       this.addStacks(v, r, c, r.int(4, 6), () => r.range(a, b), () => r.range(0.55, 0.85), blocked);
     }
-    if (lm === 'mill') v.mills.push(this.makeMill(r, hash(this.s, c, 49), millX, this.ridgeFront(millX) + H * 0.012));
+    if (lm === 'mill') v.mills.push(this.makeMill(r, hash(this.s, c, 49), millX, this.ridgeFront(millX) + H * 0.012, 1.25));
     if (lm === 'cafe') {
       const x = cx + (this.flipped ? -1 : 1) * FRAME_W * r.range(0.05, 0.1);
       v.houses.push(this.makeHouse(r, hash(this.s, c, 50), x, this.depthY(x, 0.55), H * 0.042, 'cafe'));
@@ -719,12 +733,12 @@ export class World {
       this.foregroundPlants(v, r, c, x0, x1, r.int(1, 4), blocked);
     } else if (biome === 'orchard') {
       // Olive trees planted in rows that recede toward the hills.
-      for (const t of [0.12, 0.27, 0.44, 0.64, 0.86]) {
-        const step = lerp(38, 90, t), off = r.range(0, step);
+      for (const t of [0.14, 0.36, 0.62, 0.9]) {
+        const step = lerp(70, 150, t), off = r.range(0, step);
         for (let x = x0 + off, k = 0; x < x1; x += step * r.range(0.85, 1.15), k++) {
           const y = this.depthY(x, t + r.range(-0.02, 0.02));
           if (blocked(x, y, 0)) continue;
-          v.trees.push({ id: hash(this.s, c, 52, Math.round(t * 100), k), x, y, r: H * lerp(0.018, 0.05, t), kind: 'olive' });
+          v.trees.push({ id: hash(this.s, c, 52, Math.round(t * 100), k), x, y, r: H * lerp(0.016, 0.042, t), kind: 'olive' });
         }
       }
       this.placeHouses(v, r, c, r.int(0, 1), 40, () => {
