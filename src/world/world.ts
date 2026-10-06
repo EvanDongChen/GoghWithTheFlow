@@ -1056,7 +1056,9 @@ export class World {
 // ------------------------------------------------------------------ cypress geometry
 
 function prof(t: number) {
-  return Math.pow(Math.max(0, 1 - t), 0.8) * (0.85 + 0.15 * Math.min(1, t * 5));
+  // The flame narrows steadily, then closes in a rounded tip rather than running out to a needle.
+  const cap = Math.sqrt(Math.min(1, Math.max(0, 1 - t) / 0.16));
+  return Math.pow(Math.max(0, 1 - t), 0.68) * (0.85 + 0.15 * Math.min(1, t * 5)) * (0.55 + 0.45 * cap);
 }
 
 // Skewed-sine lobes: each edge swells slowly then pulls in quickly, like upward-leaning flame tongues.
