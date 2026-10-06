@@ -106,6 +106,7 @@ class App {
     this.pool = new ChunkPool(seed, this.renderScale, () => { this.dirty = true; });
     this.life = new Life(this.world);
     this.life.stir = this.stirring;
+    this.life.sample = (x, y) => this.samplePaint(x, y);
     this.music.setWorld(this.world);
     this.camX = 0;
     this.vel = 0;
@@ -155,7 +156,7 @@ class App {
     this.app.classList.toggle('stirring', on);
     this.stirBtn.classList.toggle('active', on);
     this.stirBtn.setAttribute('aria-pressed', String(on));
-    this.stirBtn.title = on ? 'Stop stirring (B)' : 'Stir the sky with your cursor (B)';
+    this.stirBtn.title = on ? 'Stop stirring (B)' : 'Stir the painting with your cursor (B)';
     try { localStorage.setItem('gogh-stir', on ? '1' : '0'); } catch { /* private mode */ }
   }
 
@@ -181,6 +182,16 @@ class App {
     this.life.pointer(w[0], w[1], ((c.x - c.px) * w[2]) / d, ((c.y - c.py) * w[2]) / d);
     c.px = c.x;
     c.py = c.y;
+  }
+
+  /** The painted colour at a world point, read from its chunk's image. */
+  private samplePaint(x: number, y: number): [number, number, number] | null {
+    const c = World.chunkOf(x), img = this.pool.get(c)?.image;
+    if (!img || y < 0 || y >= H) return null;
+    const s = this.pool.scale, px = Math.floor((x - c * CW) * s), py = Math.floor(y * s);
+    if (px < 0 || px >= img.width || py < 0 || py >= img.height) return null;
+    const d = img.getContext('2d')!.getImageData(px, py, 1, 1).data;
+    return d[3] ? [d[0], d[1], d[2]] : null;
   }
 
   private stirBurst(e: PointerEvent) {
