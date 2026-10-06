@@ -14,7 +14,7 @@ import { clamp } from '../core/math';
 import { hash, Rng } from '../core/rng';
 import { stroke, type Field } from '../core/brush';
 import { skyColor, skyField } from '../paint/sky';
-import { drawCrow, houseWindows, millHub } from '../paint/village';
+import { houseWindows, millHub, paintCrow } from '../paint/village';
 import { cypressCovers, World, type Crow, type Glow, type Mill, type Precip } from '../world/world';
 
 interface Particle {
@@ -68,6 +68,28 @@ function grainTile(): HTMLCanvasElement {
   }
   g.putImageData(img, 0, 0);
   return c;
+}
+
+/** Crow sprites: one painted pose per flap angle, drawn once and reused so they carry the same paint and grain as the picture. */
+const CROW_FRAMES = 9, CROW_UNIT = 36, CROW_KS = 3;
+const crowSprites: HTMLCanvasElement[] = [];
+function crowSprite(i: number): HTMLCanvasElement {
+  let img = crowSprites[i];
+  if (img) return img;
+  const half = Math.ceil(1.6 * CROW_UNIT * CROW_KS), size = half * 2;
+  img = document.createElement('canvas');
+  img.width = img.height = size;
+  const g = img.getContext('2d')!;
+  g.translate(half, half);
+  g.scale(CROW_KS, CROW_KS);
+  // The same seed for every pose keeps the tones steady as the wings move.
+  paintCrow(g, new Rng(7771), CROW_UNIT, -1 + (2 * i) / (CROW_FRAMES - 1));
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = g.createPattern(grainTile(), 'repeat')!;
+  g.fillRect(0, 0, size, size);
+  crowSprites[i] = img;
+  return img;
 }
 
 const STAR_ARC: RGB[] = [[251, 241, 184], [246, 223, 110], [236, 235, 176], [220, 230, 220], [255, 248, 216]];
@@ -300,10 +322,11 @@ export class Life {
       const cx = c.x + Math.cos(a) * 150 * c.loop, cy = c.y + Math.sin(a * 1.3) * 34 * c.loop;
       // Flapping in bursts, with a glide between.
       const flap = live ? Math.sin(this.t * c.speed * 5 + c.ph) * (0.35 + 0.65 * Math.max(0, Math.sin(this.t * 0.4 + c.ph * 3))) : 0.3;
+      const img = crowSprite(clamp(Math.round(((flap + 1) / 2) * (CROW_FRAMES - 1)), 0, CROW_FRAMES - 1)), f = (c.size / CROW_UNIT) * (k / CROW_KS);
       ctx.save();
       ctx.translate(sx(cx), cy * k);
-      ctx.scale(k, k);
-      drawCrow(ctx, new Rng(c.id), 0, 0, c.size, flap, Math.sin(a) > 0 ? -1 : 1);
+      ctx.scale(Math.sin(a) > 0 ? -f : f, f);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
       ctx.restore();
     }
   }
