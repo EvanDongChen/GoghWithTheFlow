@@ -151,6 +151,8 @@ export const MOOD_NAMES: Record<Mood, string> = {
 /** The sky changes mood every ZONE units of walking, easing over the middle of each border. */
 const ZONE = 6000;
 const ZONE0 = -1500;
+/** How often a stretch of the walk has weather falling. */
+const WET_CHANCE = 0.16;
 
 function mixGrade(a: Grade, b: Grade, t: number): Grade {
   return {
@@ -372,10 +374,17 @@ export class World {
     return v;
   }
 
-  /** What is falling at x: storms bring rain (snow in winter), and each season has its own drift. */
+  /** Whether the weather has turned at x. Most of the night is dry: a stretch of the walk is rained on about one time in six. */
+  private wet(x: number): boolean {
+    return hashFloat(this.s, this.zoneAt(x).k, 964) < WET_CHANCE;
+  }
+
+  /** What is falling at x, if anything: rain (snow in winter), or the season's petals and leaves. */
   precipAt(x: number): Precip | null {
-    if (this.moodAt(x) === 'storm') return this.season === 'winter' ? 'snow' : 'rain';
-    return this.season === 'winter' ? 'snow' : this.season === 'spring' ? 'petals' : this.season === 'autumn' ? 'leaves' : null;
+    if (!this.wet(x)) return null;
+    if (this.season === 'winter') return 'snow';
+    if (this.moodAt(x) === 'storm' || this.season === 'summer') return 'rain';
+    return this.season === 'spring' ? 'petals' : 'leaves';
   }
 
   // ---------------------------------------------------------------- regions
