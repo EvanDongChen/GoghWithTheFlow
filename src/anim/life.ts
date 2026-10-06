@@ -70,8 +70,8 @@ export class Life {
     for (let tries = 0; tries < 6; tries++) {
       const x = r.range(x0, x1), y = r.range(0, this.world.ridgeBack(x));
       if (!this.inSky(x, y)) continue;
-      const col = lighten(skyColor(this.world, x, y, r), r.range(0.05, 0.2));
-      return { x, y, trail: [x, y], age: 0, life: r.range(2.5, 6), speed: r.range(26, 60), w: r.range(3, 5.5), col };
+      const col = lighten(skyColor(this.world, x, y, r), r.range(0.15, 0.35));
+      return { x, y, trail: [x, y], age: 0, life: r.range(2.5, 6), speed: r.range(30, 70), w: r.range(3.5, 6), col };
     }
     return null;
   }
@@ -79,7 +79,7 @@ export class Life {
   update(dt: number, view: View) {
     this.t += dt;
     const margin = 60, x0 = view.x0 - margin, x1 = view.x1 + margin;
-    const target = Math.round(clamp((x1 - x0) * 0.55, 150, 1300));
+    const target = Math.round(clamp((x1 - x0) * 0.65, 150, 1500));
 
     // Retire particles that aged out, left the sky or scrolled away; then top back up.
     this.ps = this.ps.filter((p) => p.age < p.life && p.x > x0 - 40 && p.x < x1 + 40 && this.inSky(p.x, p.y));
@@ -131,7 +131,7 @@ export class Life {
       const n = p.trail.length / 2;
       if (n < 2) continue;
       const fade = Math.sin(Math.PI * clamp(p.age / p.life, 0, 1));
-      ctx.strokeStyle = css(p.col, 0.75 * fade);
+      ctx.strokeStyle = css(p.col, 0.88 * fade);
       ctx.lineWidth = p.w * k;
       ctx.beginPath();
       ctx.moveTo(sx(p.trail[0]), p.trail[1] * k);
